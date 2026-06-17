@@ -26,5 +26,6 @@ func main() {
 		specs.GRPC,
 		specs.Docker,
 		specs.DockerRabbit,
+		specs.Kubernetes,
 	)
 }

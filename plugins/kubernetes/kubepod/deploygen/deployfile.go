@@ -2,6 +2,7 @@ package deploygen
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
 
 	"github.com/blueprint-uservices/blueprint/blueprint/pkg/blueprint"
@@ -19,6 +20,7 @@ type KubeDeploymentFile struct {
 	FilePath        string
 	NumReplicas     int64
 	Instances       map[string]*instance
+	Namespace       string
 }
 
 type instance struct {
@@ -41,6 +43,7 @@ func NewKubeDeploymentFile(workspaceName string, workspaceDir string, filename s
 		Instances:       make(map[string]*instance),
 		// For now NumReplicas is fixed.
 		NumReplicas: 1,
+		Namespace:   os.Getenv("BLUEPRINT_K8S_NAMESPACE"),
 	}
 }
 
@@ -139,25 +142,28 @@ var kubernetesTemplate = `
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{.Name}}
+  name: {{K8sName .Name}}
+  {{- if .Namespace}}
+  namespace: {{.Namespace}}
+  {{- end}}
   labels:
-    blueprint.service: {{.Name}}
+    blueprint.service: {{K8sName .Name}}
 spec:
   replicas: {{.NumReplicas}}
   selector:
     matchLabels:
-      blueprint.service: {{.Name}}
+      blueprint.service: {{K8sName .Name}}
   template:
     metadata:
-      name: {{.Name}}
+      name: {{K8sName .Name}}
       labels:
-        blueprint.service: {{.Name}}
+        blueprint.service: {{K8sName .Name}}
     spec:
       containers:
       {{range $_, $decl := .Instances}}
-        - name: {{.InstanceName}}
+        - name: {{K8sName .InstanceName}}
           image: {{.Image}}
-		  imagePullPolicy: Always
+          imagePullPolicy: Always
           {{- if .Config}}
           env:
           {{- range $name, $value := .Config}}
@@ -170,25 +176,28 @@ spec:
           {{- range $name, $port := .Ports}}
             - containerPort: {{$port}}
           {{- end}}
-		  {{- end}}
+          {{- end}}
       {{- end}}
       restartPolicy: Always
-      hostname: {{.Name}}
+      hostname: {{K8sName .Name}}
 `
 
 var kubernetesServiceTemplate = `
 apiVersion: v1
 kind: Service
 metadata:
-  name: {{.Name}}
+  name: {{K8sName .Name}}
+  {{- if .Namespace}}
+  namespace: {{.Namespace}}
+  {{- end}}
 spec:
   selector:
-    blueprint.service: {{.Name}}
+    blueprint.service: {{K8sName .Name}}
   ports:
   {{range $_, $decl := .Instances}}
   {{- range $name, $port := .Ports}}
-    - name: {{$name}}
-	  port: {{$port}}
+    - name: {{K8sName $name}}
+      port: {{$port}}
       targetPort: {{$port}}
   {{- end}}
   {{- end}}
