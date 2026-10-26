@@ -1,9 +1,12 @@
-go 1.22.0
+go 1.25.0
 
-toolchain go1.22.1
 
 use (
 	./blueprint
+	./examples/bigsvc/gen
+	./examples/bigsvc/wiring
+	./examples/bigsvc/workflow
+	./examples/bigsvc/workload
 	./examples/dsb_hotel/tests
 	./examples/dsb_hotel/wiring
 	./examples/dsb_hotel/workflow
