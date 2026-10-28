@@ -9,7 +9,7 @@
 //
 // Everything the analysis needs is written as JSON lines to -out:
 //
-//	{"event":"run","t":..,"k":123,"endpoints":[..],"floors_ms":[..],"violators":[..],"args":{..}}
+//	{"event":"run","t":..,"k":123,"endpoints":[..],"floors_ms":[..],"cpu_ms":[..],"kinds":[..],"params":[..],"violators":[..],"args":{..}}
 //	{"event":"step","t":..,"step":0,"rate":100}
 //	{"event":"mix","t":..,"mix":3,"w":[..]}                 (weights per endpoint, sum 1)
 //	{"t":..,"step":0,"mix":3,"rate":100,"sent":..,"done":..,"err":..,"inflight":..,
@@ -288,7 +288,7 @@ func (w *workloadGen) Run(ctx context.Context) error {
 	args := map[string]any{}
 	flag.VisitAll(func(f *flag.Flag) { args[f.Name] = f.Value.String() })
 	emit(map[string]any{"event": "run", "t": time.Now().UnixMilli(), "k": k, "endpoints": Endpoints,
-		"floors_ms": Floors, "violators": IsViolator, "args": args})
+		"floors_ms": Floors, "cpu_ms": CpuMs, "kinds": Kinds, "params": Params, "violators": IsViolator, "args": args})
 
 	mixID := 0
 	emit(map[string]any{"event": "mix", "t": time.Now().UnixMilli(), "mix": mixID, "w": mix.w})

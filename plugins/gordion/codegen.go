@@ -139,6 +139,7 @@ func New_{{.Name}}(ctx context.Context, client {{.Imports.NameOf .Service.UserTy
 {{$f := $m.Func -}}
 func (w *{{$receiver}}) {{$f.Name -}} ({{ArgVarsAndTypes $f "ctx context.Context"}}) ({{RetVarsAndTypes $f "err error"}}) {
 	gordion.PauseBegin(ctx)
+	ctx = gordion.Stamp(ctx)
 	tok := w.rec.BeginCall({{$m.Index}})
 	{{RetVars $f "err"}} = w.Client.{{$f.Name}}({{ArgVars $f "ctx"}})
 	w.rec.EndCall(tok, err != nil)

@@ -39,7 +39,7 @@ func makeKubernetesSpec(spec wiring.WiringSpec) ([]string, error) {
 	gordion.Instrument(spec, big)
 	clientpool.Create(spec, big, 32)
 	grpc.Deploy(spec, big)
-	goproc.Deploy(spec, big)          // big_proc
+	goproc.Deploy(spec, big)                   // big_proc
 	bigCtr := linuxcontainer.Deploy(spec, big) // big_ctr
 
 	wlgen := workload.Generator[workloadgen.BigWorkload](spec, "wlgen", big)
