@@ -18,8 +18,17 @@
 //
 //	{"t":<window start, unix ms>,"svc":"big_service","w":100,"a":<arrivals>,
 //	 "n":<completions>,"e":<errors>,"drop":<dropped completions>,
-//	 "all":[n,p50,p90,p99,mean,max,pp50,pp90,q50,q90],
-//	 "ep":{"Ep000":[a,n,p50,p90,p99,mean,max,pp50,pp90,q50,q90],...}}
+//	 "cpu":<process user+sys CPU ns spent in the window (linux)>,
+//	 "all":[n,p50,p90,p99,mean,max,pp50,pp90,q50,q90,x50,x90,ns,f50,f90],
+//	 "ep":{"Ep000":[a,n,p50,p90,p99,mean,max,pp50,pp90,q50,q90,x50,x90,ns,f50,f90],...}}
+//
+// x = "pre" wait: from the caller's send stamp (gRPC metadata, see Stamp) to
+// the server's first in-process timestamp; 0 if the caller sent no stamp.
+// ns = number of completions whose caller sent a stamp; f = full latency of
+// those completions, send stamp -> handler return (= pre + total), i.e. the
+// per-endpoint latency Lat_e including the admission wait. Where the caller is
+// not instrumented (ns = 0) only p is available and the admission wait is
+// invisible to this recorder.
 //
 // All latencies are in nanoseconds (int). p = total latency, pp = processing
 // latency, q = queue wait before the handler ran. Configuration is by
@@ -33,7 +42,8 @@
 //	                   caller, which includes the callee's socket queue and the
 //	                   network); unset = client-side recording disabled
 //	GORDION_RAW        "1" additionally emits every sample: "raw":{"Ep000":[total_ns,...],...},
-//	                   "rawp":{...} (processing ns) and "rawq":{...} (queue ns), for offline analysis
+//	                   "rawp":{...} (processing ns), "rawq":{...} (queue ns), "rawx":{...} (pre ns)
+//	                   and "rawf":{...} (full ns, stamped requests only), for offline analysis
 package gordion
 
 import (
@@ -50,6 +60,7 @@ import (
 
 	"github.com/blueprint-uservices/blueprint/runtime/plugins/grpcopts"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/tap"
 )
 
@@ -116,6 +127,7 @@ var statePool = sync.Pool{New: func() any { return &reqState{} }}
 type Token struct {
 	start  int64
 	queue  int64
+	pre    int64 // ns from the client's send stamp to start; -1 if the caller sent none
 	method int32
 	st     *reqState
 }
@@ -126,6 +138,31 @@ type completion struct {
 	totalNs int64
 	blockNs int64
 	queueNs int64
+	preNs   int64
+}
+
+// sentKey is the gRPC metadata key carrying the caller's send time (unix ns),
+// added by Stamp in the client wrapper. On a shared clock, start - sent is the
+// time the request spent in the network and in the server's kernel socket
+// before user space saw it: the admission wait that no in-process timer can
+// measure. Across hosts it also carries the clock offset; the idle-load
+// baseline gives that offset plus the one-way network time.
+const sentKey = "gordion-sent"
+
+// Stamp adds the caller's send time to the outgoing gRPC metadata.
+func Stamp(ctx context.Context) context.Context {
+	return metadata.AppendToOutgoingContext(ctx, sentKey, strconv.FormatInt(time.Now().UnixNano(), 10))
+}
+
+func sentOf(ctx context.Context) int64 {
+	if md, ok := metadata.FromIncomingContext(ctx); ok {
+		if v := md.Get(sentKey); len(v) > 0 {
+			if t, err := strconv.ParseInt(v[0], 10, 64); err == nil {
+				return t
+			}
+		}
+	}
+	return 0
 }
 
 // Recorder collects timing for one service.
@@ -133,6 +170,7 @@ type Recorder struct {
 	service  string
 	methods  []string
 	windowNs int64
+	lastCPU  int64 // process CPU ns at the previous flush (0 = none yet)
 	disabled bool
 	raw      bool
 
@@ -277,7 +315,7 @@ func (r *Recorder) EndCall(tok Token, isErr bool) {
 	}
 	total := time.Now().UnixNano() - tok.start
 	select {
-	case r.ch <- completion{method: tok.method, err: isErr, totalNs: total}:
+	case r.ch <- completion{method: tok.method, err: isErr, totalNs: total, preNs: -1}:
 	default:
 		atomic.AddInt64(&r.dropped, 1)
 	}
@@ -304,7 +342,11 @@ func (r *Recorder) Begin(ctx context.Context, m int) (context.Context, Token) {
 	atomic.StoreInt64(&st.pauseStart, 0)
 	atomic.StoreInt64(&st.pausedTotal, 0)
 	ctx = context.WithValue(ctx, ctxKey{}, st)
-	return ctx, Token{start: start, queue: queue, method: int32(m), st: st}
+	pre := int64(-1)
+	if sent := sentOf(ctx); sent > 0 {
+		pre = start - sent
+	}
+	return ctx, Token{start: start, queue: queue, pre: pre, method: int32(m), st: st}
 }
 
 // End stops the timer and enqueues the completion. Never blocks; if the
@@ -317,7 +359,7 @@ func (r *Recorder) End(tok Token, isErr bool) {
 	blocked := atomic.LoadInt64(&tok.st.pausedTotal)
 	statePool.Put(tok.st)
 	select {
-	case r.ch <- completion{method: tok.method, err: isErr, totalNs: total, blockNs: blocked, queueNs: tok.queue}:
+	case r.ch <- completion{method: tok.method, err: isErr, totalNs: total, blockNs: blocked, queueNs: tok.queue, preNs: tok.pre}:
 	default:
 		atomic.AddInt64(&r.dropped, 1)
 	}
@@ -355,6 +397,8 @@ type bucket struct {
 	total []int64
 	proc  []int64
 	queue []int64
+	pre   []int64 // only requests whose caller sent a stamp
+	full  []int64 // pre + total, same requests as pre: Lat_e including the admission wait
 	errs  int
 }
 
@@ -363,6 +407,10 @@ func (r *Recorder) add(buckets []bucket, c completion) {
 	b.total = append(b.total, c.totalNs)
 	b.proc = append(b.proc, c.totalNs-c.blockNs)
 	b.queue = append(b.queue, c.queueNs)
+	if c.preNs >= 0 {
+		b.pre = append(b.pre, c.preNs)
+		b.full = append(b.full, c.preNs+c.totalNs)
+	}
 	if c.err {
 		b.errs++
 	}
@@ -395,6 +443,8 @@ func (r *Recorder) loop() {
 				buckets[i].total = buckets[i].total[:0]
 				buckets[i].proc = buckets[i].proc[:0]
 				buckets[i].queue = buckets[i].queue[:0]
+				buckets[i].pre = buckets[i].pre[:0]
+				buckets[i].full = buckets[i].full[:0]
 				buckets[i].errs = 0
 			}
 		case <-r.stopCh:
@@ -425,11 +475,15 @@ func sortI64(s []int64) {
 	sort.Slice(s, func(i, j int) bool { return s[i] < s[j] })
 }
 
-// writeStats appends n,p50,p90,p99,mean,max,pp50,pp90,q50,q90 (no brackets).
-func writeStats(sb *strings.Builder, total, proc, queue []int64) {
+// writeStats appends n,p50,p90,p99,mean,max,pp50,pp90,q50,q90,x50,x90,ns,f50,f90
+// (no brackets); x = pre-arrival wait from the caller's stamp (0 when none
+// sent), ns = stamped completions, f = full latency (pre + total) of those.
+func writeStats(sb *strings.Builder, total, proc, queue, pre, full []int64) {
 	sortI64(total)
 	sortI64(proc)
 	sortI64(queue)
+	sortI64(pre)
+	sortI64(full)
 	var sum int64
 	for _, v := range total {
 		sum += v
@@ -442,7 +496,7 @@ func writeStats(sb *strings.Builder, total, proc, queue []int64) {
 		mx = total[n-1]
 	}
 	sb.WriteString(strconv.FormatInt(n, 10))
-	for _, v := range []int64{pct(total, .5), pct(total, .9), pct(total, .99), mean, mx, pct(proc, .5), pct(proc, .9), pct(queue, .5), pct(queue, .9)} {
+	for _, v := range []int64{pct(total, .5), pct(total, .9), pct(total, .99), mean, mx, pct(proc, .5), pct(proc, .9), pct(queue, .5), pct(queue, .9), pct(pre, .5), pct(pre, .9), int64(len(full)), pct(full, .5), pct(full, .9)} {
 		sb.WriteByte(',')
 		sb.WriteString(strconv.FormatInt(v, 10))
 	}
@@ -462,6 +516,10 @@ func writeRaw(sb *strings.Builder, key string, methods []string, buckets []bucke
 			vals = buckets[i].proc
 		case 2:
 			vals = buckets[i].queue
+		case 3:
+			vals = buckets[i].pre
+		case 4:
+			vals = buckets[i].full
 		}
 		if len(vals) == 0 {
 			continue
@@ -485,12 +543,14 @@ func writeRaw(sb *strings.Builder, key string, methods []string, buckets []bucke
 }
 
 func (r *Recorder) flush(winStart time.Time, buckets []bucket) {
-	var allTotal, allProc, allQueue []int64
+	var allTotal, allProc, allQueue, allPre, allFull []int64
 	var arrivals, errs int64
 	for i := range buckets {
 		allTotal = append(allTotal, buckets[i].total...)
 		allProc = append(allProc, buckets[i].proc...)
 		allQueue = append(allQueue, buckets[i].queue...)
+		allPre = append(allPre, buckets[i].pre...)
+		allFull = append(allFull, buckets[i].full...)
 		errs += int64(buckets[i].errs)
 	}
 	arr := make([]int64, len(buckets))
@@ -522,13 +582,23 @@ func (r *Recorder) flush(winStart time.Time, buckets []bucket) {
 	sb.WriteString(strconv.FormatInt(errs, 10))
 	sb.WriteString(`,"drop":`)
 	sb.WriteString(strconv.FormatInt(dropped, 10))
+	if cpu := processCPUNs(); cpu >= 0 {
+		// process CPU time (user+sys, ns) consumed during this window
+		if r.lastCPU > 0 {
+			sb.WriteString(`,"cpu":`)
+			sb.WriteString(strconv.FormatInt(cpu-r.lastCPU, 10))
+		}
+		r.lastCPU = cpu
+	}
 	sb.WriteString(`,"all":[`)
-	writeStats(&sb, allTotal, allProc, allQueue)
+	writeStats(&sb, allTotal, allProc, allQueue, allPre, allFull)
 	if r.raw {
 		// unsorted per-endpoint samples (writeStats sorts in place afterwards)
 		writeRaw(&sb, `"raw"`, r.methods, buckets, 0)
 		writeRaw(&sb, `"rawp"`, r.methods, buckets, 1)
 		writeRaw(&sb, `"rawq"`, r.methods, buckets, 2)
+		writeRaw(&sb, `"rawx"`, r.methods, buckets, 3)
+		writeRaw(&sb, `"rawf"`, r.methods, buckets, 4)
 	}
 	sb.WriteString(`],"ep":{`)
 	first := true
@@ -545,7 +615,7 @@ func (r *Recorder) flush(winStart time.Time, buckets []bucket) {
 		sb.WriteString(`":[`)
 		sb.WriteString(strconv.FormatInt(arr[i], 10))
 		sb.WriteByte(',')
-		writeStats(&sb, buckets[i].total, buckets[i].proc, buckets[i].queue)
+		writeStats(&sb, buckets[i].total, buckets[i].proc, buckets[i].queue, buckets[i].pre, buckets[i].full)
 		sb.WriteByte(']')
 	}
 	sb.WriteString("}}\n")

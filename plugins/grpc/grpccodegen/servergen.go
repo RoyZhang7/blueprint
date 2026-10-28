@@ -15,7 +15,17 @@ This function is used by the GRPC plugin to generate the server-side GRPC servic
 
 It is assumed that outputPackage is the same as the one where the .proto is generated to
 */
+// grpcModuleVersion is the google.golang.org/grpc release required by generated
+// servers and clients; keep it in step with runtime/go.mod.
+const grpcModuleVersion = "v1.84.0"
+
 func GenerateServerHandler(builder golang.ModuleBuilder, service *gocode.ServiceInterface, outputPackage string) error {
+	// Pin the gRPC module: without an explicit requirement `go mod tidy` resolves the
+	// direct import to the latest release, whose minimum Go version can exceed the
+	// toolchain the generated workspace declares (grpc v1.85.0 needs Go 1.26).
+	if err := builder.Require("google.golang.org/grpc", grpcModuleVersion); err != nil {
+		return err
+	}
 	pkg, err := builder.CreatePackage(outputPackage)
 	if err != nil {
 		return err

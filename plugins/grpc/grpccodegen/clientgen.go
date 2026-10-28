@@ -12,6 +12,12 @@ import (
 
 // Generates a gRPC client for the specified service
 func GenerateClient(builder golang.ModuleBuilder, service *gocode.ServiceInterface, outputPackage string) error {
+	// Pin the gRPC module: without an explicit requirement `go mod tidy` resolves the
+	// direct import to the latest release, whose minimum Go version can exceed the
+	// toolchain the generated workspace declares (grpc v1.85.0 needs Go 1.26).
+	if err := builder.Require("google.golang.org/grpc", grpcModuleVersion); err != nil {
+		return err
+	}
 	pkg, err := builder.CreatePackage(outputPackage)
 	if err != nil {
 		return err

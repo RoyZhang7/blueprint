@@ -9,7 +9,15 @@
 #   exp.sh run NAME [opts] -- <wlgen args>   deploy + wlgen + collect, RUN = <timestamp>-NAME
 #   exp.sh down                   delete the service deployment
 #
-# Options (env or flags): NODE=node-3 CPUSET=2-9 TAG=latest WINDOW_MS=100 MEMWALK_MB=256
+# Options (env or flags): NODE=node-4 CPUSET=2-5 TAG=latest WINDOW_MS=100 MEMWALK_MB=256
+#   HOSTDIR=/mnt/extra/gordion   recorder output dir on the service node
+#   WLGEN_NODE=node-4 WLGEN_CPUS=6,7   run the load generator on that node (pinned) instead of
+#                                       node-0, so client stamps and server timestamps share a clock
+#   STRESSOR=none|capacity-cut|aggressor   label recorded in meta.json (F9): "capacity-cut" = stress-ng
+#                                       CPU hogs on part of the service's cores, "aggressor" = the
+#                                       stage-3 HotelReservation aggressor pods (Phase B default)
+# Phase B (F8): the service node must have a working cpufreq driver (the collect step records
+# driver/governor/current frequency into meta.json); do not use SCHED_IDLE busy-loop fillers.
 set -euo pipefail
 
 BP=${BP:-/local/blueprint}
@@ -17,14 +25,17 @@ WIRING=$BP/examples/bigsvc/wiring
 BUILD=$WIRING/build-k8s
 REGISTRY=${BIGSVC_REGISTRY:-10.10.1.1:5000}
 RESULTS=${RESULTS:-/local/results}
-NODE=${NODE:-node-3}
-CPUSET=${CPUSET:-2-9}
+NODE=${NODE:-node-4}
+CPUSET=${CPUSET:-2-5}
+WLGEN_NODE=${WLGEN_NODE:-}
+WLGEN_CPUS=${WLGEN_CPUS:-6,7}
 TAG=${TAG:-latest}
 WINDOW_MS=${WINDOW_MS:-100}
 MEMWALK_MB=${MEMWALK_MB:-256}
 RAW=${RAW:-1}
 DISABLE=${DISABLE:-0}
-HOSTDIR=/mnt/extra/gordion
+HOSTDIR=${HOSTDIR:-/mnt/extra/gordion}
+STRESSOR=${STRESSOR:-none}
 export PATH=$PATH:/usr/local/go/bin:$HOME/go/bin
 
 log() { echo "[$(date +%H:%M:%S)] $*" >&2; }
@@ -35,11 +46,13 @@ cmd_build() {
   (cd $WIRING && rm -rf build-k8s && BIGSVC_REGISTRY=$REGISTRY go run . -o build-k8s -w kubernetes 2>&1 | grep -iE "error|Successfully" )
   log "docker build"
   (cd $BUILD/bigsvc_kubernetes/big_ctr && docker build -q -t $REGISTRY/big_ctr:$tag . && docker push -q $REGISTRY/big_ctr:$tag)
-  ls -la $BUILD/wlgen/wlgen_proc/wlgen_proc/wlgen_proc
+  cp $BUILD/wlgen/wlgen_proc/wlgen_proc/wlgen_proc $WIRING/wlgen-$tag
+  ls -la $WIRING/wlgen-$tag
   curl -s http://$REGISTRY/v2/big_ctr/tags/list; echo
 }
 
-wlgen_bin() { echo $BUILD/wlgen/wlgen_proc/wlgen_proc/wlgen_proc; }
+# the load generator that matches the image tag (its dispatch table is generated with the service)
+wlgen_bin() { if [ -x $WIRING/wlgen-$TAG ]; then echo $WIRING/wlgen-$TAG; else echo $BUILD/wlgen/wlgen_proc/wlgen_proc/wlgen_proc; fi; }
 
 cmd_deploy() {
   local run=$1; shift
@@ -101,8 +114,16 @@ cmd_wlgen() {
   [ "${1:-}" = "--" ] && shift
   local ip; ip=$(kubectl get svc bigsvc -o jsonpath='{.spec.clusterIP}')
   mkdir -p $RESULTS/$run
-  log "wlgen -> $ip:12345 : $*"
-  GORDION_CLIENT_OUT=$RESULTS/$run/client.jsonl GORDION_RAW=$RAW $(wlgen_bin) --big_service.grpc.dial_addr=$ip:12345 -out $RESULTS/$run/wlgen.jsonl "$@" 2>&1 | grep -vE "ScopeMetrics|^$" | tail -3 >&2
+  if [ -n "$WLGEN_NODE" ]; then
+    log "wlgen on $WLGEN_NODE (cpus $WLGEN_CPUS) -> $ip:12345 : $*"
+    local q; q=$(printf '%q ' "$@")
+    scp -q -o BatchMode=yes $(wlgen_bin) $WLGEN_NODE:/tmp/wlgen-$TAG
+    ssh -o BatchMode=yes $WLGEN_NODE "mkdir -p /tmp/wlres/$run && GORDION_CLIENT_OUT=/tmp/wlres/$run/client.jsonl GORDION_RAW=$RAW taskset -c $WLGEN_CPUS /tmp/wlgen-$TAG --big_service.grpc.dial_addr=$ip:12345 -out /tmp/wlres/$run/wlgen.jsonl $q 2>&1 | grep -vE 'ScopeMetrics|^$' | tail -3" >&2
+    scp -q -o BatchMode=yes "$WLGEN_NODE:/tmp/wlres/$run/*" $RESULTS/$run/
+  else
+    log "wlgen -> $ip:12345 : $*"
+    GORDION_CLIENT_OUT=$RESULTS/$run/client.jsonl GORDION_RAW=$RAW $(wlgen_bin) --big_service.grpc.dial_addr=$ip:12345 -out $RESULTS/$run/wlgen.jsonl "$@" 2>&1 | grep -vE "ScopeMetrics|^$" | tail -3 >&2
+  fi
   tail -1 $RESULTS/$run/wlgen.jsonl
 }
 
@@ -112,8 +133,13 @@ cmd_collect() {
   sleep 1
   scp -q -o BatchMode=yes $NODE:$HOSTDIR/$run.jsonl $RESULTS/$run/gordion.jsonl
   kubectl logs deployment/bigsvc > $RESULTS/$run/pod.log 2>/dev/null || true
+  # F8: record the service node's cpufreq state (driver, governor, current kHz of the first service core)
+  local c0=${CPUSET%%[-,]*}
+  local cpufreq; cpufreq=$(ssh -o BatchMode=yes $NODE "cd /sys/devices/system/cpu/cpu$c0/cpufreq 2>/dev/null && echo \$(cat scaling_driver) \$(cat scaling_governor) \$(cat scaling_cur_freq)" 2>/dev/null || echo "none")
+  local idle; idle=$(ssh -o BatchMode=yes $NODE "pgrep -c -f 'chrt --idle' 2>/dev/null || true")
   cat > $RESULTS/$run/meta.json <<EOF
-{"run":"$run","node":"$NODE","cpuset":"$CPUSET","tag":"$TAG","window_ms":$WINDOW_MS,"memwalk_mb":$MEMWALK_MB,"raw":"$RAW",
+{"run":"$run","node":"$NODE","cpuset":"$CPUSET","tag":"$TAG","window_ms":$WINDOW_MS,"memwalk_mb":$MEMWALK_MB,"raw":"$RAW","wlgen_node":"${WLGEN_NODE:-node-0}","wlgen_cpus":"$WLGEN_CPUS",
+ "stressor":"$STRESSOR","cpufreq":"$cpufreq","sched_idle_fillers":"${idle:-0}",
  "image":"$(kubectl get deployment bigsvc -o jsonpath='{.spec.template.spec.containers[0].image}')",
  "collected":"$(date -Is)"}
 EOF
