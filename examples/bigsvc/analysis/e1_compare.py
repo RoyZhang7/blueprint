@@ -43,6 +43,7 @@ def per_step(R, settle, costs_file):
     W, step_of, _ = settled_windows(R, settle)
     rs = rho_series(W, c_ms, 1.0)
     step_t0 = {s["step"]: s["t"] for s in R["steps"]}
+    rate_of = {s["step"]: s["rate"] for s in R["steps"]}
     arr = defaultdict(int)
     for w in W:
         for e, v in w["ep"].items():
@@ -69,7 +70,7 @@ def per_step(R, settle, costs_file):
             for e, v in r["ep"].items():
                 if v[0] >= 1 and not viol[e]:
                     cw.extend([v[1] / 1e6 - fl[e]] * v[0]); cg.extend([v[1] / 1e6 / fl[e]] * v[0])
-        rows.append(dict(step=s, rate=R["steps"][s]["rate"] if s < len(R["steps"]) else None, lam=lam, rho=rho, u=rho / k, avgS=S,
+        rows.append(dict(step=s, rate=rate_of.get(s), lam=lam, rho=rho, u=rho / k, avgS=S,
                          W=float(np.median(cw)) if cw else np.nan, g=float(np.median(cg)) if cg else np.nan, n=len(cw),
                          srv_q=float(np.median(srv_q)) if srv_q else np.nan, srv_x=float(np.median(srv_x)) if srv_x else np.nan))
     return dict(k=k, ES=ES, M=ES2 / ES, rows=rows, n_ep=len(sh), curve=cc, avgS=cc["avgS"])
@@ -79,6 +80,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--uniform", required=True); ap.add_argument("--short"); ap.add_argument("--long"); ap.add_argument("--onnode")
     ap.add_argument("--fit", action="store_true"); ap.add_argument("--shift-run", default=None)
+    ap.add_argument("--extra", action="append", default=[], help="name=run: another mix for the W(rho, avgS) fit (section 4: avgS 7 ms)")
     ap.add_argument("--out", default=None); ap.add_argument("--settle", type=float, default=5.0); ap.add_argument("--costs", default=None)
     a = ap.parse_args()
     out = a.out or a.uniform; os.makedirs(out, exist_ok=True)
@@ -87,6 +89,9 @@ def main():
         d = getattr(a, name)
         if d:
             runs[name] = per_step(load_run(d), a.settle, a.costs)
+    for spec in a.extra:  # Phase C section 4: further mixes, e.g. mid7=<run at avgS 7 ms>
+        name, d = spec.split("=", 1)
+        runs[name] = per_step(load_run(d), a.settle, a.costs)
     for name, P in runs.items():
         print(f"\n== {name}: {P['n_ep']} endpoints, mix avgS={P['ES']:.2f} ms, E[S2]/E[S]={P['M']:.2f} ms, k={P['k']}")
         print("   step  rate   lambda    u    avgS   caller W (ms)   g(diag) | server-side q50   x50(pre)")
@@ -143,6 +148,30 @@ def main():
             if gaps[i]:
                 g = np.array(gaps[i])
                 print(f"   gap summary {lbl}: obs/pred median={np.median(g):.2f}, range [{g.min():.2f}, {g.max():.2f}], |log ratio| mean={np.mean(np.abs(np.log(g))):.2f}")
+        if not a.shift_run:
+            # section 4 rule: W profiled at one (production-like) mix, the bound = the spread of the other mixes'
+            # observed W around that curve, per rho/k bin of the uniform sweep (empirical, from this cluster's mixes)
+            rows_b = []
+            for u in ug:
+                if u < 0.6 or u * k > only_u.rho_max:
+                    continue
+                w0 = only_u.predict(u * k); obs = []
+                for n, P in sweeps.items():
+                    if n == "uniform":
+                        continue
+                    us = np.array([r["u"] for r in P["rows"]]); Ws = np.array([r["W"] for r in P["rows"]]); ok = ~np.isnan(Ws)
+                    if ok.sum() >= 2 and us[ok].min() <= u <= us[ok].max():
+                        obs.append(float(np.interp(u, us[ok], Ws[ok])))
+                if obs and w0 > 0.05:
+                    rows_b.append((u, w0, min(obs), max(obs), max(abs(x - w0) for x in obs), min(obs) / w0, max(obs) / w0))
+            if rows_b:
+                print(f"\n== bound of W profiled at the uniform mix (e1_bound.csv): other mixes' W at the same rho/k")
+                print("   u     W_ref   W_min   W_max   bound_ms   ratio range")
+                with open(os.path.join(out, "e1_bound.csv"), "w") as f:
+                    f.write("u,W_ref,W_min,W_max,bound_ms,ratio_min,ratio_max\n")
+                    for u, w0, lo, hi, b, rlo, rhi in rows_b:
+                        f.write(f"{u:.3f},{w0:.4f},{lo:.4f},{hi:.4f},{b:.4f},{rlo:.3f},{rhi:.3f}\n")
+                        print(f"   {u:4.2f} {w0:7.2f} {lo:7.2f} {hi:7.2f} {b:9.2f}   [{rlo:.2f}, {rhi:.2f}]x")
         if a.shift_run:
             Rr = load_run(a.shift_run); c_ms, _ = costs_of_run(Rr, a.costs)
             Wr, _, _ = settled_windows(Rr, a.settle)

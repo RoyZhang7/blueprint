@@ -10,6 +10,8 @@
 #   exp.sh down                   delete the service deployment
 #
 # Options (env or flags): NODE=node-4 CPUSET=2-5 TAG=latest WINDOW_MS=100 MEMWALK_MB=256
+#   NS_PER_ITER=2.0077          skip the spin calibration at pod start and use this ns/iteration (the value the
+#                               quiet-start pods measure on this CPU; makes FL_e identical across runs)
 #   HOSTDIR=/mnt/extra/gordion   recorder output dir on the service node
 #   WLGEN_NODE=node-4 WLGEN_CPUS=6,7   run the load generator on that node (pinned) instead of
 #                                       node-0, so client stamps and server timestamps share a clock
@@ -58,6 +60,9 @@ cmd_deploy() {
   local run=$1; shift
   ssh -o BatchMode=yes $NODE "sudo mkdir -p $HOSTDIR && sudo chmod 777 $HOSTDIR" >/dev/null
   kubectl delete deployment bigsvc --ignore-not-found --wait=true >/dev/null
+  # the old pod keeps running through its grace period after the deployment is gone; an overloaded one (after a
+  # stressed run) overlaps with the new pod's spin calibration and halves it (c-ramp3: 4.06 vs 2.01 ns/iter)
+  kubectl wait --for=delete pod -l app=bigsvc --timeout=90s >/dev/null 2>&1 || true
   cat <<EOF | kubectl apply -f - >/dev/null
 apiVersion: apps/v1
 kind: Deployment
@@ -85,6 +90,7 @@ spec:
         - {name: GORDION_DISABLE, value: "$DISABLE"}
         - {name: BIGSVC_CPUSET, value: "$CPUSET"}
         - {name: BIGSVC_MEMWALK_MB, value: "$MEMWALK_MB"}
+        - {name: BIGSVC_NS_PER_ITER, value: "${NS_PER_ITER:-}"}
         ports: [{containerPort: 12345}]
         volumeMounts: [{name: data, mountPath: /data}]
       volumes:
@@ -136,10 +142,14 @@ cmd_collect() {
   # F8: record the service node's cpufreq state (driver, governor, current kHz of the first service core)
   local c0=${CPUSET%%[-,]*}
   local cpufreq; cpufreq=$(ssh -o BatchMode=yes $NODE "cd /sys/devices/system/cpu/cpu$c0/cpufreq 2>/dev/null && echo \$(cat scaling_driver) \$(cat scaling_governor) \$(cat scaling_cur_freq)" 2>/dev/null || echo "none")
-  local idle; idle=$(ssh -o BatchMode=yes $NODE "pgrep -c -f 'chrt --idle' 2>/dev/null || true")
+  local idle; idle=$(ssh -o BatchMode=yes $NODE "pgrep -c -x stress-ng 2>/dev/null || true")
+  # Phase C (clnode258): no cpufreq driver; the clock is pinned through MSR IA32_HWP_REQUEST (min field) and the
+  # true ratio is IA32_PERF_STATUS[15:8] x 100 MHz; NOMINAL_MHZ (env) is the f_nom the analysis must use
+  local hwp; hwp=$(ssh -o BatchMode=yes $NODE "sudo rdmsr -p $c0 0x774 2>/dev/null; echo -n ' perf_status_ratio='; echo \$(( (0x\$(sudo rdmsr -p $c0 0x198 2>/dev/null || echo 0) >> 8) & 0xff ))" 2>/dev/null | tr '
+' ' ' || echo none)
   cat > $RESULTS/$run/meta.json <<EOF
 {"run":"$run","node":"$NODE","cpuset":"$CPUSET","tag":"$TAG","window_ms":$WINDOW_MS,"memwalk_mb":$MEMWALK_MB,"raw":"$RAW","wlgen_node":"${WLGEN_NODE:-node-0}","wlgen_cpus":"$WLGEN_CPUS",
- "stressor":"$STRESSOR","cpufreq":"$cpufreq","sched_idle_fillers":"${idle:-0}",
+ "stressor":"$STRESSOR","cpufreq":"$cpufreq","sched_idle_fillers":"${idle:-0}","hwp":"$hwp","nominal_mhz":"${NOMINAL_MHZ:-}",
  "image":"$(kubectl get deployment bigsvc -o jsonpath='{.spec.template.spec.containers[0].image}')",
  "collected":"$(date -Is)"}
 EOF

@@ -1,0 +1,1658 @@
+[
+  {
+    "name": "Ep000",
+    "floor_ms": 0.2,
+    "cpu_ms": 0.2,
+    "kind": "spin",
+    "param": 0,
+    "group": 0,
+    "violator": false
+  },
+  {
+    "name": "Ep001",
+    "floor_ms": 0.208,
+    "cpu_ms": 0.208,
+    "kind": "spin",
+    "param": 0,
+    "group": 0,
+    "violator": false
+  },
+  {
+    "name": "Ep002",
+    "floor_ms": 0.216,
+    "cpu_ms": 0.216,
+    "kind": "spin",
+    "param": 0,
+    "group": 0,
+    "violator": false
+  },
+  {
+    "name": "Ep003",
+    "floor_ms": 0.225,
+    "cpu_ms": 0.225,
+    "kind": "spin",
+    "param": 0,
+    "group": 0,
+    "violator": false
+  },
+  {
+    "name": "Ep004",
+    "floor_ms": 0.233,
+    "cpu_ms": 0.233,
+    "kind": "spin",
+    "param": 0,
+    "group": 0,
+    "violator": false
+  },
+  {
+    "name": "Ep005",
+    "floor_ms": 0.243,
+    "cpu_ms": 0.243,
+    "kind": "spin",
+    "param": 0,
+    "group": 0,
+    "violator": false
+  },
+  {
+    "name": "Ep006",
+    "floor_ms": 0.252,
+    "cpu_ms": 0.252,
+    "kind": "spin",
+    "param": 0,
+    "group": 0,
+    "violator": false
+  },
+  {
+    "name": "Ep007",
+    "floor_ms": 0.262,
+    "cpu_ms": 0.262,
+    "kind": "spin",
+    "param": 0,
+    "group": 0,
+    "violator": false
+  },
+  {
+    "name": "Ep008",
+    "floor_ms": 0.273,
+    "cpu_ms": 0.273,
+    "kind": "spin",
+    "param": 0,
+    "group": 0,
+    "violator": false
+  },
+  {
+    "name": "Ep009",
+    "floor_ms": 0.283,
+    "cpu_ms": 0.283,
+    "kind": "spin",
+    "param": 0,
+    "group": 0,
+    "violator": false
+  },
+  {
+    "name": "Ep010",
+    "floor_ms": 0.295,
+    "cpu_ms": 0.295,
+    "kind": "spin",
+    "param": 0,
+    "group": 0,
+    "violator": false
+  },
+  {
+    "name": "Ep011",
+    "floor_ms": 0.306,
+    "cpu_ms": 0.306,
+    "kind": "spin",
+    "param": 0,
+    "group": 0,
+    "violator": false
+  },
+  {
+    "name": "Ep012",
+    "floor_ms": 0.318,
+    "cpu_ms": 0.318,
+    "kind": "spin",
+    "param": 0,
+    "group": 0,
+    "violator": false
+  },
+  {
+    "name": "Ep013",
+    "floor_ms": 0.331,
+    "cpu_ms": 0.331,
+    "kind": "spin",
+    "param": 0,
+    "group": 0,
+    "violator": false
+  },
+  {
+    "name": "Ep014",
+    "floor_ms": 0.344,
+    "cpu_ms": 0.344,
+    "kind": "spin",
+    "param": 0,
+    "group": 0,
+    "violator": false
+  },
+  {
+    "name": "Ep015",
+    "floor_ms": 0.357,
+    "cpu_ms": 0.357,
+    "kind": "spin",
+    "param": 0,
+    "group": 0,
+    "violator": false
+  },
+  {
+    "name": "Ep016",
+    "floor_ms": 0.371,
+    "cpu_ms": 0.371,
+    "kind": "spin",
+    "param": 0,
+    "group": 0,
+    "violator": false
+  },
+  {
+    "name": "Ep017",
+    "floor_ms": 0.386,
+    "cpu_ms": 0.386,
+    "kind": "spin",
+    "param": 0,
+    "group": 0,
+    "violator": false
+  },
+  {
+    "name": "Ep018",
+    "floor_ms": 0.401,
+    "cpu_ms": 0.401,
+    "kind": "spin",
+    "param": 0,
+    "group": 0,
+    "violator": false
+  },
+  {
+    "name": "Ep019",
+    "floor_ms": 0.417,
+    "cpu_ms": 0.417,
+    "kind": "spin",
+    "param": 0,
+    "group": 0,
+    "violator": false
+  },
+  {
+    "name": "Ep020",
+    "floor_ms": 0.434,
+    "cpu_ms": 0.434,
+    "kind": "spin",
+    "param": 0,
+    "group": 0,
+    "violator": false
+  },
+  {
+    "name": "Ep021",
+    "floor_ms": 0.451,
+    "cpu_ms": 0.451,
+    "kind": "spin",
+    "param": 0,
+    "group": 0,
+    "violator": false
+  },
+  {
+    "name": "Ep022",
+    "floor_ms": 0.469,
+    "cpu_ms": 0.469,
+    "kind": "spin",
+    "param": 0,
+    "group": 0,
+    "violator": false
+  },
+  {
+    "name": "Ep023",
+    "floor_ms": 0.487,
+    "cpu_ms": 0.487,
+    "kind": "spin",
+    "param": 0,
+    "group": 0,
+    "violator": false
+  },
+  {
+    "name": "Ep024",
+    "floor_ms": 0.506,
+    "cpu_ms": 0.506,
+    "kind": "spin",
+    "param": 0,
+    "group": 0,
+    "violator": false
+  },
+  {
+    "name": "Ep025",
+    "floor_ms": 0.526,
+    "cpu_ms": 0.526,
+    "kind": "spin",
+    "param": 0,
+    "group": 0,
+    "violator": false
+  },
+  {
+    "name": "Ep026",
+    "floor_ms": 0.547,
+    "cpu_ms": 0.547,
+    "kind": "spin",
+    "param": 0,
+    "group": 0,
+    "violator": false
+  },
+  {
+    "name": "Ep027",
+    "floor_ms": 0.569,
+    "cpu_ms": 0.569,
+    "kind": "spin",
+    "param": 0,
+    "group": 0,
+    "violator": false
+  },
+  {
+    "name": "Ep028",
+    "floor_ms": 0.591,
+    "cpu_ms": 0.591,
+    "kind": "spin",
+    "param": 0,
+    "group": 0,
+    "violator": false
+  },
+  {
+    "name": "Ep029",
+    "floor_ms": 0.614,
+    "cpu_ms": 0.614,
+    "kind": "spin",
+    "param": 0,
+    "group": 0,
+    "violator": false
+  },
+  {
+    "name": "Ep030",
+    "floor_ms": 0.639,
+    "cpu_ms": 0.639,
+    "kind": "spin",
+    "param": 0,
+    "group": 0,
+    "violator": false
+  },
+  {
+    "name": "Ep031",
+    "floor_ms": 0.664,
+    "cpu_ms": 0.664,
+    "kind": "spin",
+    "param": 0,
+    "group": 0,
+    "violator": false
+  },
+  {
+    "name": "Ep032",
+    "floor_ms": 0.69,
+    "cpu_ms": 0.69,
+    "kind": "spin",
+    "param": 0,
+    "group": 0,
+    "violator": false
+  },
+  {
+    "name": "Ep033",
+    "floor_ms": 0.717,
+    "cpu_ms": 0.717,
+    "kind": "spin",
+    "param": 0,
+    "group": 0,
+    "violator": false
+  },
+  {
+    "name": "Ep034",
+    "floor_ms": 0.746,
+    "cpu_ms": 0.746,
+    "kind": "spin",
+    "param": 0,
+    "group": 0,
+    "violator": false
+  },
+  {
+    "name": "Ep035",
+    "floor_ms": 0.775,
+    "cpu_ms": 0.775,
+    "kind": "spin",
+    "param": 0,
+    "group": 0,
+    "violator": false
+  },
+  {
+    "name": "Ep036",
+    "floor_ms": 0.806,
+    "cpu_ms": 0.806,
+    "kind": "spin",
+    "param": 0,
+    "group": 0,
+    "violator": false
+  },
+  {
+    "name": "Ep037",
+    "floor_ms": 0.837,
+    "cpu_ms": 0.837,
+    "kind": "spin",
+    "param": 0,
+    "group": 0,
+    "violator": false
+  },
+  {
+    "name": "Ep038",
+    "floor_ms": 0.87,
+    "cpu_ms": 0.87,
+    "kind": "spin",
+    "param": 0,
+    "group": 0,
+    "violator": false
+  },
+  {
+    "name": "Ep039",
+    "floor_ms": 0.905,
+    "cpu_ms": 0.905,
+    "kind": "spin",
+    "param": 0,
+    "group": 0,
+    "violator": false
+  },
+  {
+    "name": "Ep040",
+    "floor_ms": 0.94,
+    "cpu_ms": 0.94,
+    "kind": "spin",
+    "param": 0,
+    "group": 0,
+    "violator": false
+  },
+  {
+    "name": "Ep041",
+    "floor_ms": 0.977,
+    "cpu_ms": 0.977,
+    "kind": "spin",
+    "param": 0,
+    "group": 0,
+    "violator": false
+  },
+  {
+    "name": "Ep042",
+    "floor_ms": 1.016,
+    "cpu_ms": 1.016,
+    "kind": "spin",
+    "param": 0,
+    "group": 0,
+    "violator": false
+  },
+  {
+    "name": "Ep043",
+    "floor_ms": 1.056,
+    "cpu_ms": 1.056,
+    "kind": "spin",
+    "param": 0,
+    "group": 0,
+    "violator": false
+  },
+  {
+    "name": "Ep044",
+    "floor_ms": 1.098,
+    "cpu_ms": 1.098,
+    "kind": "spin",
+    "param": 0,
+    "group": 0,
+    "violator": false
+  },
+  {
+    "name": "Ep045",
+    "floor_ms": 1.141,
+    "cpu_ms": 1.141,
+    "kind": "spin",
+    "param": 0,
+    "group": 0,
+    "violator": false
+  },
+  {
+    "name": "Ep046",
+    "floor_ms": 1.186,
+    "cpu_ms": 1.186,
+    "kind": "spin",
+    "param": 0,
+    "group": 0,
+    "violator": false
+  },
+  {
+    "name": "Ep047",
+    "floor_ms": 1.233,
+    "cpu_ms": 1.233,
+    "kind": "spin",
+    "param": 0,
+    "group": 0,
+    "violator": false
+  },
+  {
+    "name": "Ep048",
+    "floor_ms": 1.282,
+    "cpu_ms": 1.282,
+    "kind": "spin",
+    "param": 0,
+    "group": 0,
+    "violator": false
+  },
+  {
+    "name": "Ep049",
+    "floor_ms": 1.332,
+    "cpu_ms": 1.332,
+    "kind": "spin",
+    "param": 0,
+    "group": 0,
+    "violator": false
+  },
+  {
+    "name": "Ep050",
+    "floor_ms": 1.385,
+    "cpu_ms": 1.385,
+    "kind": "spin",
+    "param": 0,
+    "group": 0,
+    "violator": false
+  },
+  {
+    "name": "Ep051",
+    "floor_ms": 1.439,
+    "cpu_ms": 1.439,
+    "kind": "spin",
+    "param": 0,
+    "group": 0,
+    "violator": false
+  },
+  {
+    "name": "Ep052",
+    "floor_ms": 1.496,
+    "cpu_ms": 1.496,
+    "kind": "spin",
+    "param": 0,
+    "group": 0,
+    "violator": false
+  },
+  {
+    "name": "Ep053",
+    "floor_ms": 1.555,
+    "cpu_ms": 1.555,
+    "kind": "spin",
+    "param": 0,
+    "group": 0,
+    "violator": false
+  },
+  {
+    "name": "Ep054",
+    "floor_ms": 1.617,
+    "cpu_ms": 1.617,
+    "kind": "spin",
+    "param": 0,
+    "group": 0,
+    "violator": false
+  },
+  {
+    "name": "Ep055",
+    "floor_ms": 1.68,
+    "cpu_ms": 1.68,
+    "kind": "spin",
+    "param": 0,
+    "group": 0,
+    "violator": false
+  },
+  {
+    "name": "Ep056",
+    "floor_ms": 1.747,
+    "cpu_ms": 1.747,
+    "kind": "spin",
+    "param": 0,
+    "group": 0,
+    "violator": false
+  },
+  {
+    "name": "Ep057",
+    "floor_ms": 1.816,
+    "cpu_ms": 1.816,
+    "kind": "spin",
+    "param": 0,
+    "group": 0,
+    "violator": false
+  },
+  {
+    "name": "Ep058",
+    "floor_ms": 1.887,
+    "cpu_ms": 1.887,
+    "kind": "spin",
+    "param": 0,
+    "group": 0,
+    "violator": false
+  },
+  {
+    "name": "Ep059",
+    "floor_ms": 1.962,
+    "cpu_ms": 1.962,
+    "kind": "spin",
+    "param": 0,
+    "group": 0,
+    "violator": false
+  },
+  {
+    "name": "Ep060",
+    "floor_ms": 2.039,
+    "cpu_ms": 2.039,
+    "kind": "spin",
+    "param": 0,
+    "group": 0,
+    "violator": false
+  },
+  {
+    "name": "Ep061",
+    "floor_ms": 2.12,
+    "cpu_ms": 2.12,
+    "kind": "spin",
+    "param": 0,
+    "group": 0,
+    "violator": false
+  },
+  {
+    "name": "Ep062",
+    "floor_ms": 2.203,
+    "cpu_ms": 2.203,
+    "kind": "spin",
+    "param": 0,
+    "group": 0,
+    "violator": false
+  },
+  {
+    "name": "Ep063",
+    "floor_ms": 2.29,
+    "cpu_ms": 2.29,
+    "kind": "spin",
+    "param": 0,
+    "group": 0,
+    "violator": false
+  },
+  {
+    "name": "Ep064",
+    "floor_ms": 2.38,
+    "cpu_ms": 2.38,
+    "kind": "spin",
+    "param": 0,
+    "group": 0,
+    "violator": false
+  },
+  {
+    "name": "Ep065",
+    "floor_ms": 2.474,
+    "cpu_ms": 2.474,
+    "kind": "spin",
+    "param": 0,
+    "group": 0,
+    "violator": false
+  },
+  {
+    "name": "Ep066",
+    "floor_ms": 2.572,
+    "cpu_ms": 2.572,
+    "kind": "spin",
+    "param": 0,
+    "group": 0,
+    "violator": false
+  },
+  {
+    "name": "Ep067",
+    "floor_ms": 2.674,
+    "cpu_ms": 2.674,
+    "kind": "spin",
+    "param": 0,
+    "group": 0,
+    "violator": false
+  },
+  {
+    "name": "Ep068",
+    "floor_ms": 2.779,
+    "cpu_ms": 2.779,
+    "kind": "spin",
+    "param": 0,
+    "group": 0,
+    "violator": false
+  },
+  {
+    "name": "Ep069",
+    "floor_ms": 2.889,
+    "cpu_ms": 2.889,
+    "kind": "spin",
+    "param": 0,
+    "group": 0,
+    "violator": false
+  },
+  {
+    "name": "Ep070",
+    "floor_ms": 3.003,
+    "cpu_ms": 3.003,
+    "kind": "spin",
+    "param": 0,
+    "group": 0,
+    "violator": false
+  },
+  {
+    "name": "Ep071",
+    "floor_ms": 3.121,
+    "cpu_ms": 3.121,
+    "kind": "spin",
+    "param": 0,
+    "group": 0,
+    "violator": false
+  },
+  {
+    "name": "Ep072",
+    "floor_ms": 3.244,
+    "cpu_ms": 3.244,
+    "kind": "spin",
+    "param": 0,
+    "group": 0,
+    "violator": false
+  },
+  {
+    "name": "Ep073",
+    "floor_ms": 3.372,
+    "cpu_ms": 3.372,
+    "kind": "spin",
+    "param": 0,
+    "group": 0,
+    "violator": false
+  },
+  {
+    "name": "Ep074",
+    "floor_ms": 3.505,
+    "cpu_ms": 3.505,
+    "kind": "spin",
+    "param": 0,
+    "group": 0,
+    "violator": false
+  },
+  {
+    "name": "Ep075",
+    "floor_ms": 3.644,
+    "cpu_ms": 3.644,
+    "kind": "spin",
+    "param": 0,
+    "group": 0,
+    "violator": false
+  },
+  {
+    "name": "Ep076",
+    "floor_ms": 3.787,
+    "cpu_ms": 3.787,
+    "kind": "spin",
+    "param": 0,
+    "group": 0,
+    "violator": false
+  },
+  {
+    "name": "Ep077",
+    "floor_ms": 3.937,
+    "cpu_ms": 3.937,
+    "kind": "spin",
+    "param": 0,
+    "group": 0,
+    "violator": false
+  },
+  {
+    "name": "Ep078",
+    "floor_ms": 4.092,
+    "cpu_ms": 4.092,
+    "kind": "spin",
+    "param": 0,
+    "group": 0,
+    "violator": false
+  },
+  {
+    "name": "Ep079",
+    "floor_ms": 4.254,
+    "cpu_ms": 4.254,
+    "kind": "spin",
+    "param": 0,
+    "group": 0,
+    "violator": false
+  },
+  {
+    "name": "Ep080",
+    "floor_ms": 4.421,
+    "cpu_ms": 4.421,
+    "kind": "spin",
+    "param": 0,
+    "group": 0,
+    "violator": false
+  },
+  {
+    "name": "Ep081",
+    "floor_ms": 4.596,
+    "cpu_ms": 4.596,
+    "kind": "spin",
+    "param": 0,
+    "group": 0,
+    "violator": false
+  },
+  {
+    "name": "Ep082",
+    "floor_ms": 4.777,
+    "cpu_ms": 4.777,
+    "kind": "spin",
+    "param": 0,
+    "group": 0,
+    "violator": false
+  },
+  {
+    "name": "Ep083",
+    "floor_ms": 4.966,
+    "cpu_ms": 4.966,
+    "kind": "spin",
+    "param": 0,
+    "group": 0,
+    "violator": false
+  },
+  {
+    "name": "Ep084",
+    "floor_ms": 5.162,
+    "cpu_ms": 5.162,
+    "kind": "spin",
+    "param": 0,
+    "group": 0,
+    "violator": false
+  },
+  {
+    "name": "Ep085",
+    "floor_ms": 5.365,
+    "cpu_ms": 5.365,
+    "kind": "spin",
+    "param": 0,
+    "group": 0,
+    "violator": false
+  },
+  {
+    "name": "Ep086",
+    "floor_ms": 5.577,
+    "cpu_ms": 5.577,
+    "kind": "spin",
+    "param": 0,
+    "group": 0,
+    "violator": false
+  },
+  {
+    "name": "Ep087",
+    "floor_ms": 5.797,
+    "cpu_ms": 5.797,
+    "kind": "spin",
+    "param": 0,
+    "group": 0,
+    "violator": false
+  },
+  {
+    "name": "Ep088",
+    "floor_ms": 6.026,
+    "cpu_ms": 6.026,
+    "kind": "spin",
+    "param": 0,
+    "group": 0,
+    "violator": false
+  },
+  {
+    "name": "Ep089",
+    "floor_ms": 6.264,
+    "cpu_ms": 6.264,
+    "kind": "spin",
+    "param": 0,
+    "group": 0,
+    "violator": false
+  },
+  {
+    "name": "Ep090",
+    "floor_ms": 6.511,
+    "cpu_ms": 6.511,
+    "kind": "spin",
+    "param": 0,
+    "group": 0,
+    "violator": false
+  },
+  {
+    "name": "Ep091",
+    "floor_ms": 6.768,
+    "cpu_ms": 6.768,
+    "kind": "spin",
+    "param": 0,
+    "group": 0,
+    "violator": false
+  },
+  {
+    "name": "Ep092",
+    "floor_ms": 7.035,
+    "cpu_ms": 7.035,
+    "kind": "spin",
+    "param": 0,
+    "group": 0,
+    "violator": false
+  },
+  {
+    "name": "Ep093",
+    "floor_ms": 7.312,
+    "cpu_ms": 7.312,
+    "kind": "spin",
+    "param": 0,
+    "group": 0,
+    "violator": false
+  },
+  {
+    "name": "Ep094",
+    "floor_ms": 7.601,
+    "cpu_ms": 7.601,
+    "kind": "spin",
+    "param": 0,
+    "group": 0,
+    "violator": false
+  },
+  {
+    "name": "Ep095",
+    "floor_ms": 7.901,
+    "cpu_ms": 7.901,
+    "kind": "spin",
+    "param": 0,
+    "group": 0,
+    "violator": false
+  },
+  {
+    "name": "Ep096",
+    "floor_ms": 8.212,
+    "cpu_ms": 8.212,
+    "kind": "spin",
+    "param": 0,
+    "group": 0,
+    "violator": false
+  },
+  {
+    "name": "Ep097",
+    "floor_ms": 8.537,
+    "cpu_ms": 8.537,
+    "kind": "spin",
+    "param": 0,
+    "group": 0,
+    "violator": false
+  },
+  {
+    "name": "Ep098",
+    "floor_ms": 8.873,
+    "cpu_ms": 8.873,
+    "kind": "spin",
+    "param": 0,
+    "group": 0,
+    "violator": false
+  },
+  {
+    "name": "Ep099",
+    "floor_ms": 9.223,
+    "cpu_ms": 9.223,
+    "kind": "spin",
+    "param": 0,
+    "group": 0,
+    "violator": false
+  },
+  {
+    "name": "Ep100",
+    "floor_ms": 9.587,
+    "cpu_ms": 9.587,
+    "kind": "spin",
+    "param": 0,
+    "group": 0,
+    "violator": false
+  },
+  {
+    "name": "Ep101",
+    "floor_ms": 9.966,
+    "cpu_ms": 9.966,
+    "kind": "spin",
+    "param": 0,
+    "group": 0,
+    "violator": false
+  },
+  {
+    "name": "Ep102",
+    "floor_ms": 10.359,
+    "cpu_ms": 10.359,
+    "kind": "spin",
+    "param": 0,
+    "group": 0,
+    "violator": false
+  },
+  {
+    "name": "Ep103",
+    "floor_ms": 10.768,
+    "cpu_ms": 10.768,
+    "kind": "spin",
+    "param": 0,
+    "group": 0,
+    "violator": false
+  },
+  {
+    "name": "Ep104",
+    "floor_ms": 11.193,
+    "cpu_ms": 11.193,
+    "kind": "spin",
+    "param": 0,
+    "group": 0,
+    "violator": false
+  },
+  {
+    "name": "Ep105",
+    "floor_ms": 11.634,
+    "cpu_ms": 11.634,
+    "kind": "spin",
+    "param": 0,
+    "group": 0,
+    "violator": false
+  },
+  {
+    "name": "Ep106",
+    "floor_ms": 12.093,
+    "cpu_ms": 12.093,
+    "kind": "spin",
+    "param": 0,
+    "group": 0,
+    "violator": false
+  },
+  {
+    "name": "Ep107",
+    "floor_ms": 12.57,
+    "cpu_ms": 12.57,
+    "kind": "spin",
+    "param": 0,
+    "group": 0,
+    "violator": false
+  },
+  {
+    "name": "Ep108",
+    "floor_ms": 13.066,
+    "cpu_ms": 13.066,
+    "kind": "spin",
+    "param": 0,
+    "group": 0,
+    "violator": false
+  },
+  {
+    "name": "Ep109",
+    "floor_ms": 13.582,
+    "cpu_ms": 13.582,
+    "kind": "spin",
+    "param": 0,
+    "group": 0,
+    "violator": false
+  },
+  {
+    "name": "Ep110",
+    "floor_ms": 14.118,
+    "cpu_ms": 14.118,
+    "kind": "spin",
+    "param": 0,
+    "group": 0,
+    "violator": false
+  },
+  {
+    "name": "Ep111",
+    "floor_ms": 14.675,
+    "cpu_ms": 14.675,
+    "kind": "spin",
+    "param": 0,
+    "group": 0,
+    "violator": false
+  },
+  {
+    "name": "Ep112",
+    "floor_ms": 15.254,
+    "cpu_ms": 15.254,
+    "kind": "spin",
+    "param": 0,
+    "group": 0,
+    "violator": false
+  },
+  {
+    "name": "Ep113",
+    "floor_ms": 15.856,
+    "cpu_ms": 15.856,
+    "kind": "spin",
+    "param": 0,
+    "group": 0,
+    "violator": false
+  },
+  {
+    "name": "Ep114",
+    "floor_ms": 16.481,
+    "cpu_ms": 16.481,
+    "kind": "spin",
+    "param": 0,
+    "group": 0,
+    "violator": false
+  },
+  {
+    "name": "Ep115",
+    "floor_ms": 17.132,
+    "cpu_ms": 17.132,
+    "kind": "spin",
+    "param": 0,
+    "group": 0,
+    "violator": false
+  },
+  {
+    "name": "Ep116",
+    "floor_ms": 17.808,
+    "cpu_ms": 17.808,
+    "kind": "spin",
+    "param": 0,
+    "group": 0,
+    "violator": false
+  },
+  {
+    "name": "Ep117",
+    "floor_ms": 18.51,
+    "cpu_ms": 18.51,
+    "kind": "spin",
+    "param": 0,
+    "group": 0,
+    "violator": false
+  },
+  {
+    "name": "Ep118",
+    "floor_ms": 19.241,
+    "cpu_ms": 19.241,
+    "kind": "spin",
+    "param": 0,
+    "group": 0,
+    "violator": false
+  },
+  {
+    "name": "Ep119",
+    "floor_ms": 20,
+    "cpu_ms": 20,
+    "kind": "spin",
+    "param": 0,
+    "group": 0,
+    "violator": false
+  },
+  {
+    "name": "MemWalk0P25_F1",
+    "floor_ms": 1,
+    "cpu_ms": 1,
+    "kind": "memwalk",
+    "param": 0.25,
+    "group": 0,
+    "violator": true
+  },
+  {
+    "name": "MemWalk0P25_F4",
+    "floor_ms": 4,
+    "cpu_ms": 4,
+    "kind": "memwalk",
+    "param": 0.25,
+    "group": 0,
+    "violator": true
+  },
+  {
+    "name": "MemWalk4_F1",
+    "floor_ms": 1,
+    "cpu_ms": 1,
+    "kind": "memwalk",
+    "param": 4,
+    "group": 0,
+    "violator": true
+  },
+  {
+    "name": "MemWalk4_F4",
+    "floor_ms": 4,
+    "cpu_ms": 4,
+    "kind": "memwalk",
+    "param": 4,
+    "group": 0,
+    "violator": true
+  },
+  {
+    "name": "MemWalk64_F1",
+    "floor_ms": 1,
+    "cpu_ms": 1,
+    "kind": "memwalk",
+    "param": 64,
+    "group": 0,
+    "violator": true
+  },
+  {
+    "name": "MemWalk64_F4",
+    "floor_ms": 4,
+    "cpu_ms": 4,
+    "kind": "memwalk",
+    "param": 64,
+    "group": 0,
+    "violator": true
+  },
+  {
+    "name": "MemWalk256_F1",
+    "floor_ms": 1,
+    "cpu_ms": 1,
+    "kind": "memwalk",
+    "param": 256,
+    "group": 0,
+    "violator": true
+  },
+  {
+    "name": "MemWalk256_F4",
+    "floor_ms": 4,
+    "cpu_ms": 4,
+    "kind": "memwalk",
+    "param": 256,
+    "group": 0,
+    "violator": true
+  },
+  {
+    "name": "Stream1_F1",
+    "floor_ms": 1,
+    "cpu_ms": 1,
+    "kind": "stream",
+    "param": 1,
+    "group": 0,
+    "violator": true
+  },
+  {
+    "name": "Stream1_F4",
+    "floor_ms": 4,
+    "cpu_ms": 4,
+    "kind": "stream",
+    "param": 1,
+    "group": 0,
+    "violator": true
+  },
+  {
+    "name": "Stream8_F1",
+    "floor_ms": 1,
+    "cpu_ms": 1,
+    "kind": "stream",
+    "param": 8,
+    "group": 0,
+    "violator": true
+  },
+  {
+    "name": "Stream8_F4",
+    "floor_ms": 4,
+    "cpu_ms": 4,
+    "kind": "stream",
+    "param": 8,
+    "group": 0,
+    "violator": true
+  },
+  {
+    "name": "Stream64_F1",
+    "floor_ms": 1,
+    "cpu_ms": 1,
+    "kind": "stream",
+    "param": 64,
+    "group": 0,
+    "violator": true
+  },
+  {
+    "name": "Stream64_F4",
+    "floor_ms": 4,
+    "cpu_ms": 4,
+    "kind": "stream",
+    "param": 64,
+    "group": 0,
+    "violator": true
+  },
+  {
+    "name": "Alloc0P0625_F1",
+    "floor_ms": 1,
+    "cpu_ms": 1,
+    "kind": "alloc",
+    "param": 0.0625,
+    "group": 0,
+    "violator": true
+  },
+  {
+    "name": "Alloc0P0625_F4",
+    "floor_ms": 4,
+    "cpu_ms": 4,
+    "kind": "alloc",
+    "param": 0.0625,
+    "group": 0,
+    "violator": true
+  },
+  {
+    "name": "Alloc1_F1",
+    "floor_ms": 1,
+    "cpu_ms": 1,
+    "kind": "alloc",
+    "param": 1,
+    "group": 0,
+    "violator": true
+  },
+  {
+    "name": "Alloc1_F4",
+    "floor_ms": 4,
+    "cpu_ms": 4,
+    "kind": "alloc",
+    "param": 1,
+    "group": 0,
+    "violator": true
+  },
+  {
+    "name": "Alloc4_F1",
+    "floor_ms": 1,
+    "cpu_ms": 1,
+    "kind": "alloc",
+    "param": 4,
+    "group": 0,
+    "violator": true
+  },
+  {
+    "name": "Alloc4_F4",
+    "floor_ms": 4,
+    "cpu_ms": 4,
+    "kind": "alloc",
+    "param": 4,
+    "group": 0,
+    "violator": true
+  },
+  {
+    "name": "Alloc16_F1",
+    "floor_ms": 1,
+    "cpu_ms": 1,
+    "kind": "alloc",
+    "param": 16,
+    "group": 0,
+    "violator": true
+  },
+  {
+    "name": "Alloc16_F4",
+    "floor_ms": 4,
+    "cpu_ms": 4,
+    "kind": "alloc",
+    "param": 16,
+    "group": 0,
+    "violator": true
+  },
+  {
+    "name": "Mutex0P1_F1",
+    "floor_ms": 1,
+    "cpu_ms": 1,
+    "kind": "mutex",
+    "param": 0.1,
+    "group": 0,
+    "violator": true
+  },
+  {
+    "name": "Mutex0P1_F4",
+    "floor_ms": 4,
+    "cpu_ms": 4,
+    "kind": "mutex",
+    "param": 0.1,
+    "group": 0,
+    "violator": true
+  },
+  {
+    "name": "Mutex0P5_F1",
+    "floor_ms": 1,
+    "cpu_ms": 1,
+    "kind": "mutex",
+    "param": 0.5,
+    "group": 0,
+    "violator": true
+  },
+  {
+    "name": "Mutex0P5_F4",
+    "floor_ms": 4,
+    "cpu_ms": 4,
+    "kind": "mutex",
+    "param": 0.5,
+    "group": 0,
+    "violator": true
+  },
+  {
+    "name": "Mutex2_F1",
+    "floor_ms": 1,
+    "cpu_ms": 1,
+    "kind": "mutex",
+    "param": 1,
+    "group": 0,
+    "violator": true
+  },
+  {
+    "name": "Mutex2_F4",
+    "floor_ms": 4,
+    "cpu_ms": 4,
+    "kind": "mutex",
+    "param": 2,
+    "group": 0,
+    "violator": true
+  },
+  {
+    "name": "LockShare2_F1_0",
+    "floor_ms": 1,
+    "cpu_ms": 1,
+    "kind": "lockshare",
+    "param": 2,
+    "group": 1,
+    "violator": true
+  },
+  {
+    "name": "LockShare2_F1_1",
+    "floor_ms": 1,
+    "cpu_ms": 1,
+    "kind": "lockshare",
+    "param": 2,
+    "group": 1,
+    "violator": true
+  },
+  {
+    "name": "LockShare2_F4_0",
+    "floor_ms": 4,
+    "cpu_ms": 4,
+    "kind": "lockshare",
+    "param": 2,
+    "group": 2,
+    "violator": true
+  },
+  {
+    "name": "LockShare2_F4_1",
+    "floor_ms": 4,
+    "cpu_ms": 4,
+    "kind": "lockshare",
+    "param": 2,
+    "group": 2,
+    "violator": true
+  },
+  {
+    "name": "LockShare4_F1_0",
+    "floor_ms": 1,
+    "cpu_ms": 1,
+    "kind": "lockshare",
+    "param": 4,
+    "group": 3,
+    "violator": true
+  },
+  {
+    "name": "LockShare4_F1_1",
+    "floor_ms": 1,
+    "cpu_ms": 1,
+    "kind": "lockshare",
+    "param": 4,
+    "group": 3,
+    "violator": true
+  },
+  {
+    "name": "LockShare4_F1_2",
+    "floor_ms": 1,
+    "cpu_ms": 1,
+    "kind": "lockshare",
+    "param": 4,
+    "group": 3,
+    "violator": true
+  },
+  {
+    "name": "LockShare4_F1_3",
+    "floor_ms": 1,
+    "cpu_ms": 1,
+    "kind": "lockshare",
+    "param": 4,
+    "group": 3,
+    "violator": true
+  },
+  {
+    "name": "LockShare4_F4_0",
+    "floor_ms": 4,
+    "cpu_ms": 4,
+    "kind": "lockshare",
+    "param": 4,
+    "group": 4,
+    "violator": true
+  },
+  {
+    "name": "LockShare4_F4_1",
+    "floor_ms": 4,
+    "cpu_ms": 4,
+    "kind": "lockshare",
+    "param": 4,
+    "group": 4,
+    "violator": true
+  },
+  {
+    "name": "LockShare4_F4_2",
+    "floor_ms": 4,
+    "cpu_ms": 4,
+    "kind": "lockshare",
+    "param": 4,
+    "group": 4,
+    "violator": true
+  },
+  {
+    "name": "LockShare4_F4_3",
+    "floor_ms": 4,
+    "cpu_ms": 4,
+    "kind": "lockshare",
+    "param": 4,
+    "group": 4,
+    "violator": true
+  },
+  {
+    "name": "Sleep1_F1",
+    "floor_ms": 2,
+    "cpu_ms": 1,
+    "kind": "sleep",
+    "param": 1,
+    "group": 0,
+    "violator": true
+  },
+  {
+    "name": "Sleep1_F4",
+    "floor_ms": 5,
+    "cpu_ms": 4,
+    "kind": "sleep",
+    "param": 1,
+    "group": 0,
+    "violator": true
+  },
+  {
+    "name": "Sleep5_F1",
+    "floor_ms": 6,
+    "cpu_ms": 1,
+    "kind": "sleep",
+    "param": 5,
+    "group": 0,
+    "violator": true
+  },
+  {
+    "name": "Sleep5_F4",
+    "floor_ms": 9,
+    "cpu_ms": 4,
+    "kind": "sleep",
+    "param": 5,
+    "group": 0,
+    "violator": true
+  },
+  {
+    "name": "Sleep20_F1",
+    "floor_ms": 21,
+    "cpu_ms": 1,
+    "kind": "sleep",
+    "param": 20,
+    "group": 0,
+    "violator": true
+  },
+  {
+    "name": "Sleep20_F4",
+    "floor_ms": 24,
+    "cpu_ms": 4,
+    "kind": "sleep",
+    "param": 20,
+    "group": 0,
+    "violator": true
+  },
+  {
+    "name": "Fanout2_F1",
+    "floor_ms": 1,
+    "cpu_ms": 2,
+    "kind": "fanout",
+    "param": 2,
+    "group": 0,
+    "violator": true
+  },
+  {
+    "name": "Fanout2_F4",
+    "floor_ms": 4,
+    "cpu_ms": 8,
+    "kind": "fanout",
+    "param": 2,
+    "group": 0,
+    "violator": true
+  },
+  {
+    "name": "Fanout4_F1",
+    "floor_ms": 1,
+    "cpu_ms": 4,
+    "kind": "fanout",
+    "param": 4,
+    "group": 0,
+    "violator": true
+  },
+  {
+    "name": "Fanout4_F4",
+    "floor_ms": 4,
+    "cpu_ms": 16,
+    "kind": "fanout",
+    "param": 4,
+    "group": 0,
+    "violator": true
+  },
+  {
+    "name": "Fanout8_F1",
+    "floor_ms": 1,
+    "cpu_ms": 8,
+    "kind": "fanout",
+    "param": 8,
+    "group": 0,
+    "violator": true
+  },
+  {
+    "name": "Fanout8_F4",
+    "floor_ms": 4,
+    "cpu_ms": 32,
+    "kind": "fanout",
+    "param": 8,
+    "group": 0,
+    "violator": true
+  },
+  {
+    "name": "VarLn0P3_F1",
+    "floor_ms": 1,
+    "cpu_ms": 1.046,
+    "kind": "varln",
+    "param": 0.3,
+    "group": 0,
+    "violator": true
+  },
+  {
+    "name": "VarLn0P3_F4",
+    "floor_ms": 4,
+    "cpu_ms": 4.184,
+    "kind": "varln",
+    "param": 0.3,
+    "group": 0,
+    "violator": true
+  },
+  {
+    "name": "VarLn0P7_F1",
+    "floor_ms": 1,
+    "cpu_ms": 1.278,
+    "kind": "varln",
+    "param": 0.7,
+    "group": 0,
+    "violator": true
+  },
+  {
+    "name": "VarLn0P7_F4",
+    "floor_ms": 4,
+    "cpu_ms": 5.11,
+    "kind": "varln",
+    "param": 0.7,
+    "group": 0,
+    "violator": true
+  },
+  {
+    "name": "VarBi0P1_F1",
+    "floor_ms": 1,
+    "cpu_ms": 1.9,
+    "kind": "varbi",
+    "param": 0.1,
+    "group": 0,
+    "violator": true
+  },
+  {
+    "name": "VarBi0P1_F4",
+    "floor_ms": 4,
+    "cpu_ms": 7.6,
+    "kind": "varbi",
+    "param": 0.1,
+    "group": 0,
+    "violator": true
+  },
+  {
+    "name": "Sys0P5_F1",
+    "floor_ms": 1,
+    "cpu_ms": 1,
+    "kind": "syscall",
+    "param": 0.5,
+    "group": 0,
+    "violator": true
+  },
+  {
+    "name": "Sys0P5_F4",
+    "floor_ms": 4,
+    "cpu_ms": 4,
+    "kind": "syscall",
+    "param": 0.5,
+    "group": 0,
+    "violator": true
+  },
+  {
+    "name": "Sys1_F1",
+    "floor_ms": 1,
+    "cpu_ms": 1,
+    "kind": "syscall",
+    "param": 1,
+    "group": 0,
+    "violator": true
+  },
+  {
+    "name": "Sys1_F4",
+    "floor_ms": 4,
+    "cpu_ms": 4,
+    "kind": "syscall",
+    "param": 1,
+    "group": 0,
+    "violator": true
+  },
+  {
+    "name": "Mixed1_F1",
+    "floor_ms": 1,
+    "cpu_ms": 1,
+    "kind": "mixed",
+    "param": 1,
+    "group": 0,
+    "violator": true
+  },
+  {
+    "name": "Mixed1_F4",
+    "floor_ms": 4,
+    "cpu_ms": 4,
+    "kind": "mixed",
+    "param": 1,
+    "group": 0,
+    "violator": true
+  }
+]

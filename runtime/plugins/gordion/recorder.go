@@ -19,13 +19,15 @@
 //	{"t":<window start, unix ms>,"svc":"big_service","w":100,"a":<arrivals>,
 //	 "n":<completions>,"e":<errors>,"drop":<dropped completions>,
 //	 "cpu":<process user+sys CPU ns spent in the window (linux)>,
+//	 "mhz":<mean current frequency of the process's cores, sysfs cpufreq (linux, if available)>,
 //	 "all":[n,p50,p90,p99,mean,max,pp50,pp90,q50,q90,x50,x90,ns,f50,f90],
 //	 "ep":{"Ep000":[a,n,p50,p90,p99,mean,max,pp50,pp90,q50,q90,x50,x90,ns,f50,f90],...}}
 //
 // x = "pre" wait: from the caller's send stamp (gRPC metadata, see Stamp) to
 // the server's first in-process timestamp; 0 if the caller sent no stamp.
 // ns = number of completions whose caller sent a stamp; f = full latency of
-// those completions, send stamp -> handler return (= pre + total), i.e. the
+// those completions, send stamp -> handler return minus the time blocked on
+// gordion-instrumented downstream calls (= x + queue + processing), i.e. the
 // per-endpoint latency Lat_e including the admission wait. Where the caller is
 // not instrumented (ns = 0) only p is available and the admission wait is
 // invisible to this recorder.
@@ -127,7 +129,7 @@ var statePool = sync.Pool{New: func() any { return &reqState{} }}
 type Token struct {
 	start  int64
 	queue  int64
-	pre    int64 // ns from the client's send stamp to start; -1 if the caller sent none
+	pre    int64 // ns from the client's send stamp to start (may be negative across hosts); noPre if the caller sent none
 	method int32
 	st     *reqState
 }
@@ -140,6 +142,13 @@ type completion struct {
 	queueNs int64
 	preNs   int64
 }
+
+// noPre marks a request whose caller sent no stamp. A stamped request keeps its
+// pre even when negative: across hosts pre = start - sent carries the clock
+// offset between caller and callee (sub-ms with NTP, either sign), which the
+// idle-load baseline removes offline; dropping negative values would keep only
+// the slow requests and bias the f stream.
+const noPre = -1 << 62
 
 // sentKey is the gRPC metadata key carrying the caller's send time (unix ns),
 // added by Stamp in the client wrapper. On a shared clock, start - sent is the
@@ -315,7 +324,7 @@ func (r *Recorder) EndCall(tok Token, isErr bool) {
 	}
 	total := time.Now().UnixNano() - tok.start
 	select {
-	case r.ch <- completion{method: tok.method, err: isErr, totalNs: total, preNs: -1}:
+	case r.ch <- completion{method: tok.method, err: isErr, totalNs: total, preNs: noPre}:
 	default:
 		atomic.AddInt64(&r.dropped, 1)
 	}
@@ -342,7 +351,7 @@ func (r *Recorder) Begin(ctx context.Context, m int) (context.Context, Token) {
 	atomic.StoreInt64(&st.pauseStart, 0)
 	atomic.StoreInt64(&st.pausedTotal, 0)
 	ctx = context.WithValue(ctx, ctxKey{}, st)
-	pre := int64(-1)
+	pre := int64(noPre)
 	if sent := sentOf(ctx); sent > 0 {
 		pre = start - sent
 	}
@@ -398,7 +407,7 @@ type bucket struct {
 	proc  []int64
 	queue []int64
 	pre   []int64 // only requests whose caller sent a stamp
-	full  []int64 // pre + total, same requests as pre: Lat_e including the admission wait
+	full  []int64 // pre + total - blocked, same requests as pre: Lat_e incl. the admission wait
 	errs  int
 }
 
@@ -407,9 +416,9 @@ func (r *Recorder) add(buckets []bucket, c completion) {
 	b.total = append(b.total, c.totalNs)
 	b.proc = append(b.proc, c.totalNs-c.blockNs)
 	b.queue = append(b.queue, c.queueNs)
-	if c.preNs >= 0 {
+	if c.preNs != noPre {
 		b.pre = append(b.pre, c.preNs)
-		b.full = append(b.full, c.preNs+c.totalNs)
+		b.full = append(b.full, c.preNs+c.totalNs-c.blockNs)
 	}
 	if c.err {
 		b.errs++
@@ -589,6 +598,11 @@ func (r *Recorder) flush(winStart time.Time, buckets []bucket) {
 			sb.WriteString(strconv.FormatInt(cpu-r.lastCPU, 10))
 		}
 		r.lastCPU = cpu
+	}
+	if mhz := cpuFreqMHz(); mhz > 0 {
+		// mean current frequency of the process's cores at the end of the window (sysfs cpufreq)
+		sb.WriteString(`,"mhz":`)
+		sb.WriteString(strconv.FormatInt(int64(mhz), 10))
 	}
 	sb.WriteString(`,"all":[`)
 	writeStats(&sb, allTotal, allProc, allQueue, allPre, allFull)
