@@ -29,8 +29,8 @@ import numpy as np
 
 sys.path.insert(0, os.path.dirname(__file__))
 from dictionary import (EP_A, EP_N, EP_P50, EP_P90, EP_P99, EP_MEAN, EP_MAX, EP_PP50, EP_PP90, EP_Q50, EP_Q90,
-                        EP_X50, EP_X90, EP_NS, EP_F50, EP_F90, NOTATION, OVERLOAD_WAIT, WaitModel, assign, avgS_of_window,
-                        costs_from_idle_run, costs_of_run, cpuset_size, fit_rule_a, floors_lowest_step,
+                        EP_X50, EP_X90, EP_NS, EP_F50, EP_F90, NOMINAL_MHZ, NOTATION, OVERLOAD_WAIT, WaitModel, assign, avgS_of_window,
+                        costs_from_idle_run, costs_from_sweep, costs_of_run, cpuset_size, fit_rule_a, floors_lowest_step,
                         fmt_ratio, lat_samples, notation, overloaded_steps, ratio_stats, rho_of_window,
                         settled_windows, shape_test, stamp_coverage, window_len_s)
 
@@ -43,15 +43,28 @@ except Exception:  # pragma: no cover
 
 
 # ----------------------------------------------------------------------------- loading
-def load_run(d):
+def load_run(d, svc=None, caller=None, keep_idle=False):
+    svc = svc or os.environ.get("GORDION_SVC") or None        # HotelReservation: downstream SUT (<svc>.jsonl)
+    caller = caller or os.environ.get("GORDION_CALLER") or None  # caller view from <caller>-client.jsonl
+    """Load one run directory.
+
+    gordion.jsonl + wlgen.jsonl (BigSvc, or the HotelReservation SUT copied by hr.sh) by default.
+    svc="reservation" reads <svc>.jsonl instead (a downstream HotelReservation service): its
+    endpoints come from the recorder's start event, floors/costs from --costs.
+    caller="frontend" replaces the load generator's per-endpoint reports with the caller-side
+    recorder stream <caller>-client.jsonl (svc "<svc>@client"): each window becomes one report
+    whose per-endpoint p50/p90 are the caller-observed RTTs.
+    keep_idle keeps the idle heartbeat windows (B1 cost baseline).
+    GORDION_SVC / GORDION_CALLER in the environment set the defaults for every script."""
     meta = json.load(open(os.path.join(d, "meta.json"))) if os.path.exists(os.path.join(d, "meta.json")) else {}
     windows, start = [], None
-    for line in open(os.path.join(d, "gordion.jsonl")):
+    src = os.path.join(d, f"{svc}.jsonl" if svc else "gordion.jsonl")
+    for line in open(src):
         o = json.loads(line)
         if o.get("event") == "start":
             start = o
             continue
-        if o.get("a", 0) == 0 and o.get("n", 0) == 0:
+        if not keep_idle and o.get("a", 0) == 0 and o.get("n", 0) == 0:
             continue
         windows.append(o)
     run, steps, mixes, reports = None, [], [], []
@@ -72,6 +85,24 @@ def load_run(d):
                 reports.append(o)
     if run is None:
         sys.exit(f"no 'run' event in {wl}")
+    if svc and start is not None and start.get("methods") and set(start["methods"]) != set(run["endpoints"]):
+        # a downstream service: the dictionary's endpoints are its own methods
+        names = list(start["methods"])
+        cm = dict(zip(run["endpoints"], run.get("cpu_ms", run["floors_ms"])))
+        run = dict(run, endpoints=names, floors_ms=[cm.get(e, 0.0) for e in names], cpu_ms=[cm.get(e, 0.0) for e in names],
+                   violators=[False] * len(names), kinds=["grpc"] * len(names))
+    if caller:
+        tag = f"{svc or meta.get('sut', 'frontend')}@client"
+        reports = []
+        for line in open(os.path.join(d, f"{caller}-client.jsonl")):
+            o = json.loads(line)
+            if o.get("event") == "start" or o.get("svc") != tag or o.get("n", 0) == 0:
+                continue
+            ep = {e: [v[EP_N], v[EP_P50], v[EP_P90], v[EP_MEAN], 0] for e, v in o["ep"].items() if v[EP_N] > 0}
+            reports.append({"t": o["t"] + o.get("w", 100), "ep": ep, "all": o["all"][:5]})
+        rep_step = assign(reports, steps, "step") if steps else [0] * len(reports)
+        for r, st in zip(reports, rep_step):
+            r["step"] = st if st is not None else -1
     return dict(meta=meta, start=start, windows=windows, run=run, steps=steps, mixes=mixes, reports=reports, dir=d)
 
 
@@ -181,15 +212,17 @@ def analyze_profile(R, out, settle_s, costs_file=None, quiet=False):
         for r in svc:
             f.write(",".join(f"{v:.4f}" if isinstance(v, float) else str(v) for v in r) + "\n")
     if any("cpu" in w for w in W):
-        say("CPU accounting: step  lambda  cores_busy  sum(a*c_e)/s(cores)  cpu_per_req(ms)  mean_c_e(ms)  overhead/req(ms)")
+        say("CPU accounting: step  lambda  cores_busy  sum(a*c_e)/s(cores)  cpu_per_req(ms)  mean_c_e(ms)  overhead/req(ms)  MHz  cpu_per_req@nominal(ms)")
         for s in steps_present:
             ws = [w for w, st in zip(W, step_of) if st == s and "cpu" in w]
             if not ws:
                 continue
             secs = sum(window_len_s(w) for w in ws); cpu = sum(w["cpu"] for w in ws) / 1e9
             arr = sum(w["a"] for w in ws); offered = sum(rho_of_window(w, c_ms) * window_len_s(w) for w in ws)
+            mhz = np.mean([w["mhz"] for w in ws if "mhz" in w]) if any("mhz" in w for w in ws) else float("nan")
+            nom = cpu * (mhz / NOMINAL_MHZ) if not np.isnan(mhz) else float("nan")
             if arr:
-                say(f"   {s:3d}  {arr / secs:7.0f}  {cpu / secs:7.2f}      {offered / secs:7.2f}           {cpu / arr * 1e3:7.3f}      {offered / arr * 1e3:7.3f}      {(cpu - offered) / arr * 1e3:+7.3f}")
+                say(f"   {s:3d}  {arr / secs:7.0f}  {cpu / secs:7.2f}      {offered / secs:7.2f}           {cpu / arr * 1e3:7.3f}      {offered / arr * 1e3:7.3f}      {(cpu - offered) / arr * 1e3:+7.3f}  {mhz:5.0f}  {nom / arr * 1e3:7.3f}")
     say("service-level: step rate lambda rho/k avgS p50 p90 stamped%")
     for r in svc:
         say(f"   {r[0]:3d} {r[1]:7.0f} {r[2]:8.1f} {r[3] / k:5.2f} {r[4]:6.2f} {r[5]:8.3f} {r[6]:8.3f} {r[8] * 100:5.0f}")
@@ -345,11 +378,14 @@ def analyze_predict(R, prof, model, out, settle_s, stressed_knee=None, use_avgS=
 
 
 # ----------------------------------------------------------------------------- B1 costs
-def idle_costs(runs, out_file):
+def idle_costs(runs, out_file, svc=None, nominal_mhz=None):
     costs = {}
     for d in runs:
-        R = load_run(d)
-        c = costs_from_idle_run(R)
+        R = load_run(d, svc=svc, keep_idle=True)
+        c = costs_from_idle_run(R, nominal_mhz=nominal_mhz)
+        mhz = [w["mhz"] for w in R["windows"] if "mhz" in w and w.get("a", 0)]
+        if mhz:
+            print(f"   {os.path.basename(d)}: cores at {np.mean(mhz):.0f} MHz during load (c_e expressed at {nominal_mhz or NOMINAL_MHZ:.0f} MHz)")
         for e, v in c.items():
             costs.setdefault(e, []).append(v)
         print(f"{os.path.basename(d)}: {len(c)} endpoints, " + ", ".join(f"{e}={v:.3f}" for e, v in list(c.items())[:4]))
@@ -369,19 +405,52 @@ def main():
     ap.add_argument("--no-avgS", action="store_true", help="ignore the avgS input even with several --dict")
     ap.add_argument("--idle-costs", nargs="+", default=None, help="B1: single-endpoint idle runs -> costs.json")
     ap.add_argument("--out-costs", default="costs.json")
+    ap.add_argument("--svc", default=None, help="HotelReservation: analyse <svc>.jsonl (a downstream service) instead of gordion.jsonl")
+    ap.add_argument("--caller", default=None, help="HotelReservation: take the caller view from <caller>-client.jsonl instead of the load generator")
+    ap.add_argument("--nominal-mhz", type=float, default=None, help="clock at which c_e is expressed (default dictionary.NOMINAL_MHZ)")
+    ap.add_argument("--costs-from-sweep", default=None, help="marginal c_e by regression over this mixed sweep -> --out-costs")
+    ap.add_argument("--calibrate-costs", default=None, help="scale the idle-run costs (--costs) to this sweep's operating load -> --out-costs")
     a = ap.parse_args()
     if a.idle_costs:
-        idle_costs(a.idle_costs, a.out_costs); return
+        idle_costs(a.idle_costs, a.out_costs, a.svc, a.nominal_mhz); return
+    if a.calibrate_costs:
+        # operating-load scale for the idle-run costs: s = median over steps with 0.3 <= cores_busy/k <= 0.9
+        # of (cores_busy / offered busy-cores from the idle costs); writes <out-costs>
+        R = load_run(a.calibrate_costs, svc=a.svc)
+        c_idle, _ = costs_of_run(R, a.costs)
+        k = cpuset_size(R["meta"].get("cpuset", "0-7"))
+        W, step_of, _ = settled_windows(R, a.settle)
+        ratios = []
+        for st in sorted(set(step_of)):
+            ws = [w for w, x in zip(W, step_of) if x == st and "cpu" in w]
+            if not ws:
+                continue
+            secs = sum(window_len_s(w) for w in ws); busy = sum(w["cpu"] for w in ws) / 1e9 / secs
+            offered = sum(rho_of_window(w, c_idle) * window_len_s(w) for w in ws) / secs
+            if 0.3 <= busy / k <= 0.9 and offered > 0:
+                ratios.append(busy / offered)
+        s_op = float(np.median(ratios)) if ratios else 1.0
+        c_op = {e: v * s_op for e, v in c_idle.items()}
+        json.dump({"costs_ms": c_op, "scale": s_op, "method": f"idle-run c_e x {s_op:.3f} (cores busy / offered busy-cores, steps at 0.3-0.9 utilisation of {os.path.basename(a.calibrate_costs)})",
+                   "runs": [os.path.basename(a.calibrate_costs)]}, open(a.out_costs, "w"), indent=1)
+        print(f"operating-load scale s = {s_op:.3f} over {len(ratios)} steps; c_e(op): " + ", ".join(f"{e}={v:.3f}" for e, v in c_op.items()) + f"; wrote {a.out_costs}"); return
+    if a.costs_from_sweep:
+        R = load_run(a.costs_from_sweep, svc=a.svc)
+        c, base = costs_from_sweep(R, a.settle, a.nominal_mhz)
+        print(f"marginal c_e over {os.path.basename(a.costs_from_sweep)} (ms at nominal clock): " + ", ".join(f"{e}={v:.3f}" for e, v in c.items()) + f"; idle base {base:.1f} ms CPU per second")
+        json.dump({"costs_ms": c, "base_ms_per_s": base, "runs": [os.path.basename(a.costs_from_sweep)], "method": "sweep regression"}, open(a.out_costs, "w"), indent=1)
+        print("wrote", a.out_costs); return
     if not a.run:
         ap.error("run is required")
     out = a.out or a.run
     os.makedirs(out, exist_ok=True)
+    L = lambda d: load_run(d, svc=a.svc, caller=a.caller)
     if a.dict:
-        profs = [analyze_profile(load_run(d), d, a.settle, a.costs, quiet=(i > 0)) for i, d in enumerate(a.dict)]
+        profs = [analyze_profile(L(d), d, a.settle, a.costs, quiet=(i > 0)) for i, d in enumerate(a.dict)]
         model = combine_models(profs)
-        analyze_predict(load_run(a.run), profs[0], model, out, a.settle, a.stressed_knee, use_avgS=not a.no_avgS)
+        analyze_predict(L(a.run), profs[0], model, out, a.settle, a.stressed_knee, use_avgS=not a.no_avgS)
     else:
-        analyze_profile(load_run(a.run), out, a.settle, a.costs)
+        analyze_profile(L(a.run), out, a.settle, a.costs)
 
 
 if __name__ == "__main__":

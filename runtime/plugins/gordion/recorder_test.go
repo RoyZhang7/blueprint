@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"os"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -105,8 +106,14 @@ func TestStamp(t *testing.T) {
 		t.Fatalf("pre = %d ns, want >= 2 ms", tok.pre)
 	}
 	_, tok2 := r.Begin(context.Background(), 0)
-	if tok2.pre != -1 {
-		t.Fatalf("pre without stamp = %d, want -1", tok2.pre)
+	if tok2.pre != noPre {
+		t.Fatalf("pre without stamp = %d, want noPre", tok2.pre)
+	}
+	// a stamp from a clock ahead of ours gives a negative pre that must be kept
+	md2 := metadata.Pairs(sentKey, strconv.FormatInt(time.Now().UnixNano()+int64(time.Second), 10))
+	_, tok3 := r.Begin(metadata.NewIncomingContext(context.Background(), md2), 0)
+	if tok3.pre == noPre || tok3.pre > -int64(500*time.Millisecond) {
+		t.Fatalf("negative pre not kept: %d", tok3.pre)
 	}
 }
 

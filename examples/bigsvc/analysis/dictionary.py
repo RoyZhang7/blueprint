@@ -22,13 +22,20 @@ from collections import defaultdict
 
 import numpy as np
 
+NOMINAL_MHZ = float(os.environ.get("GORDION_NOMINAL_MHZ", "2100"))  # f_nom, the clock c_e is expressed at: apt186 2100 (E5-2450), clnode258 2400 (8360Y)
+# Lat_e source (Phase C section 0): "unstamped" = the server-side within-service latency from the
+# tap with the downstream-blocked time excluded (rawp / pp stream; handoff F4 withdrawn);
+# "stamped" = the Phase B definition (caller send stamp -> handler return, rawf / f stream).
+LAT_MODE = os.environ.get("GORDION_LAT", "unstamped")
+
 # per-endpoint stats vector written by the recorder: [a, n, p50, p90, p99, mean, max,
 # pp50, pp90, q50, q90, x50, x90, ns, f50, f90]; older runs stop after x90, the
 # oldest after p99/mean/max (then x = 0).
 (EP_A, EP_N, EP_P50, EP_P90, EP_P99, EP_MEAN, EP_MAX, EP_PP50, EP_PP90, EP_Q50, EP_Q90,
  EP_X50, EP_X90, EP_NS, EP_F50, EP_F90) = range(16)
 
-NOTATION = ("Lat_e = per-endpoint latency incl. admission wait;  FL_e = floor;  c_e = CPU/req;  "
+NOTATION = (("Lat_e = within-service latency (tap -> return, downstream-blocked time excluded);  " if LAT_MODE == "unstamped" else
+             "Lat_e = per-endpoint latency incl. admission wait;  ") + "FL_e = floor;  c_e = CPU/req;  "
             "rho = lambda*sum %_e*c_e (/k on k cores);  avgS = sum %_e*c_e;  W = median_e(Lat_e - FL_e);  "
             "D_e[rho] = FL_e + W")
 
@@ -51,32 +58,82 @@ def costs_of_run(R, costs_file=None):
     return dict(zip(names, R["run"]["floors_ms"])), "configured floors (no cpu_ms in run)"
 
 
-def costs_from_idle_run(R, settle=2.0):
-    """c_e from a single-endpoint idle run (B1): process CPU over the run / completions,
-    minus nothing (the fixed transport cost per request is part of c_e). Returns
-    {endpoint: ms} for the endpoints that had completions."""
-    tot_cpu, n = 0.0, defaultdict(int)
-    t0 = min(w["t"] for w in R["windows"])
-    for w in R["windows"]:
-        if w["t"] < t0 + settle * 1000 or "cpu" not in w:
+def costs_from_idle_run(R, settle=2.0, nominal_mhz=None):
+    """c_e from a single-endpoint idle run (B1): (process CPU over the loaded windows minus
+    the process's idle baseline CPU per second, measured on the run's idle windows) divided
+    by completions, expressed at the nominal clock when the recorder reports the cores'
+    frequency ("mhz": c_e_nominal = c_e_measured * mhz / nominal, i.e. cycles / nominal
+    clock, Gordion's kcyc normalisation). The fixed per-request transport cost is part of
+    c_e. Returns {endpoint: ms} for the endpoints that had completions (several share pro rata)."""
+    nominal = nominal_mhz or NOMINAL_MHZ
+    idle = [w["cpu"] / window_len_s(w) for w in R["windows"] if w.get("a", 0) == 0 and w.get("n", 0) == 0 and "cpu" in w]
+    base = float(np.median(idle)) if idle else 0.0  # ns of CPU per second with no requests
+    busy = [w for w in R["windows"] if (w.get("a", 0) or w.get("n", 0)) and "cpu" in w]
+    if not busy:
+        return {}
+    t0 = min(w["t"] for w in busy)
+    tot_cpu, secs, n, cyc = 0.0, 0.0, defaultdict(int), 0.0
+    for w in busy:
+        if w["t"] < t0 + settle * 1000:
             continue
-        tot_cpu += w["cpu"]
+        tot_cpu += w["cpu"]; secs += window_len_s(w)
+        cyc += w["cpu"] * (w.get("mhz", nominal) / nominal)  # CPU ns scaled to the nominal clock
         for e, v in w["ep"].items():
             n[e] += v[EP_N]
     tot = sum(n.values())
-    return {e: tot_cpu / tot / 1e6 for e in n if n[e] > 0}  # all endpoints that ran share the CPU pro rata
+    if tot == 0:
+        return {}
+    scale = cyc / tot_cpu if tot_cpu > 0 else 1.0
+    return {e: max(0.0, tot_cpu - base * secs) * scale / tot / 1e6 for e in n if n[e] > 0}
+
+
+def costs_from_sweep(R, settle=5.0, nominal_mhz=None, min_windows=200):
+    """Marginal c_e by regression over a mixed sweep (Cherkasova-style): per window,
+    CPU_nominal = base * dt + sum_e c_e * a_e, least squares with c_e >= 0 (projected). The
+    marginal cost at operating loads, as opposed to the idle-run cost which carries the
+    per-request wake-up overhead of a lightly loaded process. Returns ({e: ms}, base ms/s)."""
+    nominal = nominal_mhz or NOMINAL_MHZ
+    W, step_of, _ = settled_windows(R, settle)
+    names = R["run"]["endpoints"]
+    rows, y = [], []
+    for w in W:
+        if "cpu" not in w:
+            continue
+        cpu = w["cpu"] * (w.get("mhz", nominal) / nominal) / 1e6  # ms at nominal clock
+        rows.append([window_len_s(w)] + [w["ep"].get(e, [0])[EP_A] for e in names]); y.append(cpu)
+    if len(rows) < min_windows:
+        return {}, 0.0
+    X = np.array(rows, float); y = np.array(y)
+    beta, *_ = np.linalg.lstsq(X, y, rcond=None)
+    for _ in range(5):  # project negative costs to 0 and refit the rest
+        neg = [i for i in range(1, len(beta)) if beta[i] < 0]
+        if not neg:
+            break
+        keep = [i for i in range(len(beta)) if i not in neg]
+        b2, *_ = np.linalg.lstsq(X[:, keep], y, rcond=None)
+        beta = np.zeros(len(beta)); beta[keep] = b2
+    return {e: float(beta[i + 1]) for i, e in enumerate(names)}, float(beta[0])
 
 
 def window_len_s(w):
     return w.get("w", 100) / 1000.0
 
 
+FREQ_NORM = os.environ.get("GORDION_FREQ_NORM", "0") == "1"
+
+
 def rho_of_window(w, c_ms):
-    """busy-seconds per second offered in this window: sum_e a_e * c_e / W."""
+    """busy-seconds per second offered in this window: sum_e a_e * c_e / W. With
+    GORDION_FREQ_NORM=1 and a per-window "mhz" field, c_e is taken at the nominal clock and the
+    window's capacity scales with its actual clock: rho = sum_e a_e c_e / (W * mhz / nominal),
+    i.e. the offered fraction of the cycles actually available (Gordion's frequency term)."""
     s = 0.0
     for e, v in w["ep"].items():
         s += v[EP_A] * c_ms.get(e, 0.0) / 1000.0
-    return s / window_len_s(w)
+    cap = window_len_s(w)
+    if FREQ_NORM and w.get("mhz"):
+        cap *= w["mhz"] / NOMINAL_MHZ
+    return s / cap
 
 
 def rho_series(windows, c_ms, smooth_s=1.0):
@@ -119,12 +176,21 @@ def lat_samples(w, e):
     """Per-request Lat_e samples (ns) of endpoint e in window w, including the admission
     wait where the caller stamped the request. Returns (samples, source) with source
     'full' (recorder f stream), 'approx' (total + the window's x50: pre-2026-10-28 runs
-    with a stamp), or 'inproc' (no stamp: admission wait invisible)."""
+    with a stamp), or 'inproc' (no stamp: admission wait invisible). With GORDION_LAT=unstamped
+    (the default since Phase C) the stamp is ignored and the samples are the processing stream
+    (tap -> handler return minus downstream-blocked time; source 'unstamped')."""
+    v = w["ep"].get(e)
+    if LAT_MODE == "unstamped":
+        rp = w.get("rawp")
+        if rp and e in rp and len(rp[e]):
+            return np.asarray(rp[e], float), "unstamped"
+        if v is None or v[EP_N] == 0:
+            return np.zeros(0), "none"
+        return np.full(v[EP_N], float(v[EP_PP50])), "unstamped"
     rf = w.get("rawf")
     if rf and e in rf and len(rf[e]):
         return np.asarray(rf[e], float), "full"
     raw = w.get("raw")
-    v = w["ep"].get(e)
     x = v[EP_X50] if v is not None and len(v) > EP_X50 else 0
     if raw and e in raw and len(raw[e]):
         s = np.asarray(raw[e], float)
@@ -173,16 +239,18 @@ def assign(items, events, key):
     return out
 
 
-def settled_windows(R, settle_s, by="step"):
-    """Windows after warm-up and after the first settle_s of each step (and mix)."""
+def settled_windows(R, settle_s, by="step", settle_mix=None):
+    """Windows after warm-up and after the first settle_s of each step (and settle_mix of each
+    mix change; default = settle_s, use 0 for a ramp run whose mix moves every second)."""
     W = R["windows"]
+    sm = settle_s if settle_mix is None else settle_mix
     step_of = assign(W, R["steps"], "step")
     step_t0 = {s["step"]: s["t"] for s in R["steps"]}
     mix_of = assign(W, R["mixes"], "mix") if R["mixes"] else [0] * len(W)
     mix_t0 = {m["mix"]: m["t"] for m in R["mixes"]} if R["mixes"] else {0: -1e18}
     keep = [i for i, (w, s, m) in enumerate(zip(W, step_of, mix_of))
             if s is not None and s >= 0 and m is not None
-            and w["t"] >= step_t0[s] + settle_s * 1000 and w["t"] >= mix_t0[m] + settle_s * 1000]
+            and w["t"] >= step_t0[s] + settle_s * 1000 and w["t"] >= mix_t0[m] + sm * 1000]
     return [W[i] for i in keep], [step_of[i] for i in keep], [mix_of[i] for i in keep]
 
 
@@ -190,13 +258,17 @@ def overloaded_steps(R, windows, step_of, tol=0.95):
     """Steps whose served arrival rate fell below tol x the target: the service was past
     its knee there, so its W is not a profiled maximum (F5)."""
     rate = {s["step"]: s["rate"] for s in R["steps"]}
-    bad = set()
+    served = {}
     for s in sorted(set(step_of)):
         ws = [w for w, st in zip(windows, step_of) if st == s]
-        lam = sum(w["a"] for w in ws) / sum(window_len_s(w) for w in ws)
-        if rate.get(s) and lam < tol * rate[s]:
-            bad.add(s)
-    return bad
+        if rate.get(s):
+            served[s] = sum(w["a"] for w in ws) / sum(window_len_s(w) for w in ws) / rate[s]
+    if not served:
+        return set()
+    # a downstream SUT sees only a fraction of the generator's rate (its share of the call
+    # graph): compare each step's served/target ratio with the lowest step's
+    ref = served[min(served)]
+    return {s for s, v in served.items() if v < tol * ref}
 
 
 # ----------------------------------------------------------------------------- rule A fit

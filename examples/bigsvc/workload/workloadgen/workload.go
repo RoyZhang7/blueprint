@@ -55,6 +55,9 @@ var (
 	fMaxInfl    = flag.Int("max-inflight", 50000, "drop arrivals beyond this many in flight (counted as err)")
 	fWarmup     = flag.Float64("warmup", 0, "seconds of warm-up at the first rate before step 0 starts (reported as step -1)")
 	fRateJitter = flag.Bool("poisson", true, "Poisson arrivals (false = deterministic spacing)")
+	fRampTo     = flag.String("ramp-to", "", "target mix (same syntax as -mix) for a linear mix ramp at fixed rate: hold -mix, then move to it")
+	fRampStart  = flag.Float64("ramp-start", 30, "seconds after step 0 starts when the ramp begins")
+	fRampSec    = flag.Float64("ramp-seconds", 60, "ramp duration in seconds (the mix is re-weighted every second; a mix event is written each time)")
 )
 
 type workloadGen struct {
@@ -173,9 +176,10 @@ func gamma(r *rand.Rand, a float64) float64 {
 	}
 }
 
-func parseMix(r *rand.Rand) (*mixer, bool, error) {
+func parseMix(r *rand.Rand) (*mixer, bool, error) { return parseMixSpec(*fMix, r) }
+
+func parseMixSpec(spec string, r *rand.Rand) (*mixer, bool, error) {
 	base := baseWeights()
-	spec := *fMix
 	switch {
 	case spec == "uniform":
 		return newMixer(base), false, nil
@@ -282,6 +286,14 @@ func (w *workloadGen) Run(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	var w0, w1 []float64 // ramp end points (normalised)
+	if *fRampTo != "" {
+		m1, _, err := parseMixSpec(*fRampTo, r)
+		if err != nil {
+			return err
+		}
+		w0, w1 = mix.w, m1.w
+	}
 	k := len(Endpoints)
 	st := &stats{eps: make([]perEndpoint, k)}
 
@@ -317,6 +329,7 @@ func (w *workloadGen) Run(ctx context.Context) error {
 	if *fWarmup > 0 {
 		firstStep = -1
 	}
+	var rampStart, rampEnd, nextRampTick time.Time
 	for si, s := range steps {
 		stepID := int64(si + firstStep)
 		atomic.StoreInt64(&curStep, stepID)
@@ -325,6 +338,11 @@ func (w *workloadGen) Run(ctx context.Context) error {
 		stepEnd := time.Now().Add(s.dur)
 		nextResample := time.Now().Add(time.Duration(*fResample * float64(time.Second)))
 		next := time.Now()
+		if w1 != nil && stepID == 0 {
+			rampStart = time.Now().Add(time.Duration(*fRampStart * float64(time.Second)))
+			rampEnd = rampStart.Add(time.Duration(*fRampSec * float64(time.Second)))
+			nextRampTick = rampStart
+		}
 		for {
 			if ctx.Err() != nil {
 				return w.finish(st, emit, stopRep, repDone)
@@ -332,6 +350,18 @@ func (w *workloadGen) Run(ctx context.Context) error {
 			now := time.Now()
 			if now.After(stepEnd) {
 				break
+			}
+			if w1 != nil && stepID >= 0 && now.After(nextRampTick) && nextRampTick.Before(rampEnd.Add(time.Second)) {
+				f := math.Min(1, math.Max(0, now.Sub(rampStart).Seconds()/rampEnd.Sub(rampStart).Seconds()))
+				wv := make([]float64, k)
+				for i := range wv {
+					wv[i] = (1-f)*w0[i] + f*w1[i]
+				}
+				mix = newMixer(wv)
+				mixID++
+				curMix.Store(int64(mixID))
+				emit(map[string]any{"event": "mix", "t": now.UnixMilli(), "mix": mixID, "w": mix.w, "ramp": f})
+				nextRampTick = nextRampTick.Add(time.Second)
 			}
 			if resample && now.After(nextResample) {
 				mix = newMixer(dirichlet(r, *fAlpha, baseWeights()))

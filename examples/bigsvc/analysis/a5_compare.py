@@ -42,8 +42,8 @@ def truth_channels(P, Ps):
         st = shape_test(resid, fl)
         out.append((m, Ps["W50"][b] - Wi, st[0] if st else np.nan, st[1] if st else np.nan))
     T = np.array(out)
-    ok = ~np.isnan(T[:, 2])  # bins with enough endpoints for the shape regression
-    return dict(rho=T[:, 0], add=T[:, 1], rho_s=T[ok, 0], slope=T[ok, 2], intercept=T[ok, 3])
+    ok = ~np.isnan(T[:, 2])  # bins with enough endpoints for the shape regression (none with < 8 endpoints)
+    return dict(rho=T[:, 0], add=T[:, 1], rho_s=T[ok, 0], slope=T[ok, 2], intercept=T[ok, 3], shape=bool(ok.any()))
 
 
 def evaluate(R, P, T, knee, settle, label):
@@ -54,7 +54,9 @@ def evaluate(R, P, T, knee, settle, label):
         Wi = model.predict(rho, S)
         usable = model.usable(rho, S, knee)
         if T is not None:
-            t_add = float(np.interp(rho, T["rho"], T["add"])); t_sl = float(np.interp(rho, T["rho_s"], T["slope"])); t_ic = float(np.interp(rho, T["rho_s"], T["intercept"]))
+            t_add = float(np.interp(rho, T["rho"], T["add"]))
+            t_sl = float(np.interp(rho, T["rho_s"], T["slope"])) if T["shape"] else np.nan
+            t_ic = float(np.interp(rho, T["rho_s"], T["intercept"])) if T["shape"] else np.nan
         else:
             t_add = t_sl = t_ic = 0.0
         resid = {}
@@ -80,7 +82,9 @@ def evaluate(R, P, T, knee, settle, label):
     X = np.c_[np.ones(len(U)), [r["u"] for r in U]]
     res = err - X @ np.linalg.lstsq(X, err, rcond=None)[0]
     print(f"   corr(own share, err residual after u) = {np.corrcoef([r['share'] for r in U], res)[0, 1]:+.3f}")
-    su = [sg for sg in segs if sg["usable"]]
+    su = [sg for sg in segs if sg["usable"] and (T is None or T["shape"])]
+    if not su and segs:
+        print("   shape channels (F6): not applicable (fewer than 8 endpoints)")
     if su:
         print(f"   shape channels over {len(su)} usable segments (F6):")
         print("      slope (x FL_e):   " + fmt_ratio(ratio_stats([sg["slope"] for sg in su], [sg["t_slope"] for sg in su], floor_ms=0.05)))
@@ -120,7 +124,8 @@ def main():
         if m > T["rho"].max():
             break
         w0 = model.predict(m, Ps["avgS"]); w1 = float(np.interp(m, Ps["mids"][~np.isnan(Ps["W50"])], Ps["W50"][~np.isnan(Ps["W50"])]))
-        print(f"   rho/k={m / k:4.2f}: W={w0:7.2f}  W_s={w1:8.2f}  ext={w1 - w0:8.2f} ms   slope={np.interp(m, T['rho_s'], T['slope']):+.3f}  intercept={np.interp(m, T['rho_s'], T['intercept']):+.2f} ms")
+        sh = f"   slope={np.interp(m, T['rho_s'], T['slope']):+.3f}  intercept={np.interp(m, T['rho_s'], T['intercept']):+.2f} ms" if T["shape"] else ""
+        print(f"   rho/k={m / k:4.2f}: W={w0:7.2f}  W_s={w1:8.2f}  ext={w1 - w0:8.2f} ms" + sh)
     rows, segs = evaluate(load_run(a.run), P, T, knee, a.settle, "stressed random mixes")
     C = evaluate(load_run(a.control), P, None, knee, a.settle, "control (same schedule, no stressor)") if a.control else None
     if C:
@@ -141,7 +146,8 @@ def main():
         if knee:
             ax[0].axvline(knee / k, color="r", lw=0.8, ls="--")
         for axi, key, tkey, ttl in ((ax[1], "slope", "t_slope", "shape channel: slope (x FL_e)"), (ax[2], "intercept", "t_intercept", "shape channel: intercept (ms)")):
-            axi.plot(T["rho_s"] / k, T["slope" if key == "slope" else "intercept"], "k-", lw=1.5, label="ground truth (stressed sweep)")
+            if T["shape"]:
+                axi.plot(T["rho_s"] / k, T["slope" if key == "slope" else "intercept"], "k-", lw=1.5, label="ground truth (stressed sweep)")
             axi.plot([s["u"] for s in segs if s["usable"]], [s[key] for s in segs if s["usable"]], "o", ms=3, alpha=0.6, label="estimate, usable")
             axi.plot([s["u"] for s in segs if not s["usable"]], [s[key] for s in segs if not s["usable"]], "o", ms=3, alpha=0.3, color="0.6", label="removed")
             if C:
