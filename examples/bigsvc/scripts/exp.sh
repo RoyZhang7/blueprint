@@ -15,6 +15,7 @@
 #   HOSTDIR=/mnt/extra/gordion   recorder output dir on the service node
 #   WLGEN_NODE=node-4 WLGEN_CPUS=6,7   run the load generator on that node (pinned) instead of
 #                                       node-0, so client stamps and server timestamps share a clock
+#   GATE=1 GATE_CAP=            Phase D: admission gate in the recorder (GORDION_GATE / GORDION_GATE_CAP)
 #   STRESSOR=none|capacity-cut|aggressor   label recorded in meta.json (F9): "capacity-cut" = stress-ng
 #                                       CPU hogs on part of the service's cores, "aggressor" = the
 #                                       stage-3 HotelReservation aggressor pods (Phase B default)
@@ -36,6 +37,8 @@ WINDOW_MS=${WINDOW_MS:-100}
 MEMWALK_MB=${MEMWALK_MB:-256}
 RAW=${RAW:-1}
 DISABLE=${DISABLE:-0}
+GATE=${GATE:-1}            # Phase D G-A: admission gate in the recorder (GORDION_GATE); 0 = off
+GATE_CAP=${GATE_CAP:-}     # override the gate capacity (default GOMAXPROCS-1 = k-1)
 HOSTDIR=${HOSTDIR:-/mnt/extra/gordion}
 STRESSOR=${STRESSOR:-none}
 export PATH=$PATH:/usr/local/go/bin:$HOME/go/bin
@@ -88,6 +91,8 @@ spec:
         - {name: GORDION_WINDOW_MS, value: "$WINDOW_MS"}
         - {name: GORDION_RAW, value: "$RAW"}
         - {name: GORDION_DISABLE, value: "$DISABLE"}
+        - {name: GORDION_GATE, value: "$GATE"}
+        - {name: GORDION_GATE_CAP, value: "$GATE_CAP"}
         - {name: BIGSVC_CPUSET, value: "$CPUSET"}
         - {name: BIGSVC_MEMWALK_MB, value: "$MEMWALK_MB"}
         - {name: BIGSVC_NS_PER_ITER, value: "${NS_PER_ITER:-}"}
@@ -150,6 +155,7 @@ cmd_collect() {
   cat > $RESULTS/$run/meta.json <<EOF
 {"run":"$run","node":"$NODE","cpuset":"$CPUSET","tag":"$TAG","window_ms":$WINDOW_MS,"memwalk_mb":$MEMWALK_MB,"raw":"$RAW","wlgen_node":"${WLGEN_NODE:-node-0}","wlgen_cpus":"$WLGEN_CPUS",
  "stressor":"$STRESSOR","cpufreq":"$cpufreq","sched_idle_fillers":"${idle:-0}","hwp":"$hwp","nominal_mhz":"${NOMINAL_MHZ:-}",
+ "gate":"$GATE","gate_cap":"$GATE_CAP","ns_per_iter":"${NS_PER_ITER:-}",
  "image":"$(kubectl get deployment bigsvc -o jsonpath='{.spec.template.spec.containers[0].image}')",
  "collected":"$(date -Is)"}
 EOF

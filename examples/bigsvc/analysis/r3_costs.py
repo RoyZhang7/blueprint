@@ -19,7 +19,7 @@ import numpy as np
 from scipy.optimize import nnls
 sys.path.insert(0, os.path.dirname(__file__))
 from analyze import load_run
-from dictionary import (EP_A, NOMINAL_MHZ, costs_of_run, cpuset_size, rho_series, settled_windows, window_len_s)
+from dictionary import (EP_A, NOMINAL_MHZ, clock_mhz, costs_of_run, cpuset_size, rho_series, settled_windows, window_len_s)
 
 
 def fit(W, names, c_ms, k, lo, hi, nominal, intercept=True, band="util"):
@@ -27,7 +27,7 @@ def fit(W, names, c_ms, k, lo, hi, nominal, intercept=True, band="util"):
     over 1 s, lies in [lo, hi] (cost-independent, so the selection does not feed back into the fit);
     band="rho": keep by rho/k from the current costs (the literal R3 wording, iterated)."""
     rs = rho_series(W, c_ms, 1.0)
-    util = np.array([(w["cpu"] * ((w.get("mhz") or nominal) / nominal) / 1e6) / (window_len_s(w) * 1000 * k) if "cpu" in w else np.nan for w in W])
+    util = np.array([(w["cpu"] * ((clock_mhz(w) or nominal) / nominal) / 1e6) / (window_len_s(w) * 1000 * k) if "cpu" in w else np.nan for w in W])
     # 1 s centred smoothing of the measured utilisation (same as rho_series)
     ts = np.array([w["t"] for w in W]); us = util.copy()
     for i in range(len(W)):
@@ -38,7 +38,7 @@ def fit(W, names, c_ms, k, lo, hi, nominal, intercept=True, band="util"):
     X, y, mhz = [], [], []
     for i in keep:
         w = W[i]
-        f = w.get("mhz") or nominal
+        f = clock_mhz(w) or nominal
         X.append(([window_len_s(w)] if intercept else []) + [w["ep"].get(e, [0])[EP_A] for e in names])
         y.append(w["cpu"] * (f / nominal) / 1e6)  # ms of CPU at the nominal clock
         mhz.append(f)
@@ -71,7 +71,7 @@ def main():
         R2 = load_run(d, svc=a.svc)
         W2, _, _ = settled_windows(R2, a.settle)
         W = W + W2
-    has_mhz = sum("mhz" in w for w in W)
+    has_mhz = sum(1 for w in W if clock_mhz(w))
     print(f"{os.path.basename(a.run)}{' + ' + ' + '.join(os.path.basename(d) for d in a.also) if a.also else ''} ({a.svc or 'SUT'}): "
           f"{len(W)} settled windows, k={k}, clock logged in {has_mhz} of them "
           f"(f_nom {NOMINAL_MHZ:.0f} MHz){'' if has_mhz else ' -- NO per-window clock: c_e assumes f_nom'}; starting costs: {src}")

@@ -130,70 +130,9 @@ var Endpoints = []string{
 	"Ep117",
 	"Ep118",
 	"Ep119",
-	"MemWalk0P25_F1",
-	"MemWalk0P25_F4",
-	"MemWalk4_F1",
-	"MemWalk4_F4",
-	"MemWalk64_F1",
-	"MemWalk64_F4",
-	"MemWalk256_F1",
-	"MemWalk256_F4",
-	"Stream1_F1",
-	"Stream1_F4",
-	"Stream8_F1",
-	"Stream8_F4",
-	"Stream64_F1",
-	"Stream64_F4",
-	"Alloc0P0625_F1",
-	"Alloc0P0625_F4",
-	"Alloc1_F1",
-	"Alloc1_F4",
-	"Alloc4_F1",
-	"Alloc4_F4",
-	"Alloc16_F1",
-	"Alloc16_F4",
-	"Mutex0P1_F1",
-	"Mutex0P1_F4",
-	"Mutex0P5_F1",
-	"Mutex0P5_F4",
-	"Mutex2_F1",
-	"Mutex2_F4",
-	"LockShare2_F1_0",
-	"LockShare2_F1_1",
-	"LockShare2_F4_0",
-	"LockShare2_F4_1",
-	"LockShare4_F1_0",
-	"LockShare4_F1_1",
-	"LockShare4_F1_2",
-	"LockShare4_F1_3",
-	"LockShare4_F4_0",
-	"LockShare4_F4_1",
-	"LockShare4_F4_2",
-	"LockShare4_F4_3",
-	"Sleep1_F1",
-	"Sleep1_F4",
-	"Sleep5_F1",
-	"Sleep5_F4",
-	"Sleep20_F1",
-	"Sleep20_F4",
-	"Fanout2_F1",
-	"Fanout2_F4",
-	"Fanout4_F1",
-	"Fanout4_F4",
-	"Fanout8_F1",
-	"Fanout8_F4",
-	"VarLn0P3_F1",
-	"VarLn0P3_F4",
-	"VarLn0P7_F1",
-	"VarLn0P7_F4",
-	"VarBi0P1_F1",
-	"VarBi0P1_F4",
-	"Sys0P5_F1",
-	"Sys0P5_F4",
-	"Sys1_F1",
-	"Sys1_F4",
-	"Mixed1_F1",
-	"Mixed1_F4",
+	"VioMemWalk",
+	"VioMutex",
+	"VioAlloc",
 }
 
 var Floors = []float64{
@@ -317,70 +256,9 @@ var Floors = []float64{
 	18.51,
 	19.241,
 	20,
-	1,
-	4,
-	1,
-	4,
-	1,
-	4,
-	1,
-	4,
-	1,
-	4,
-	1,
-	4,
-	1,
-	4,
-	1,
-	4,
-	1,
-	4,
-	1,
-	4,
-	1,
-	4,
-	1,
-	4,
-	1,
-	4,
-	1,
-	4,
-	1,
-	1,
-	4,
-	4,
-	1,
-	1,
-	1,
-	1,
-	4,
-	4,
-	4,
 	4,
 	2,
-	5,
-	6,
-	9,
-	21,
-	24,
 	1,
-	4,
-	1,
-	4,
-	1,
-	4,
-	1,
-	4,
-	1,
-	4,
-	1,
-	4,
-	1,
-	4,
-	1,
-	4,
-	1,
-	4,
 }
 
 var CpuMs = []float64{
@@ -504,70 +382,9 @@ var CpuMs = []float64{
 	18.51,
 	19.241,
 	20,
-	1,
-	4,
-	1,
-	4,
-	1,
-	4,
-	1,
-	4,
-	1,
-	4,
-	1,
-	4,
-	1,
-	4,
-	1,
-	4,
-	1,
-	4,
-	1,
-	4,
-	1,
-	4,
-	1,
-	4,
-	1,
-	4,
-	1,
-	4,
-	1,
-	1,
-	4,
-	4,
-	1,
-	1,
-	1,
-	1,
-	4,
-	4,
-	4,
-	4,
-	1,
-	4,
-	1,
-	4,
-	1,
 	4,
 	2,
-	8,
-	4,
-	16,
-	8,
-	32,
-	1.046,
-	4.184,
-	1.278,
-	5.11,
-	1.9,
-	7.6,
 	1,
-	4,
-	1,
-	4,
-	1,
-	4,
 }
 
 var Kinds = []string{
@@ -692,69 +509,8 @@ var Kinds = []string{
 	"spin",
 	"spin",
 	"memwalk",
-	"memwalk",
-	"memwalk",
-	"memwalk",
-	"memwalk",
-	"memwalk",
-	"memwalk",
-	"memwalk",
-	"stream",
-	"stream",
-	"stream",
-	"stream",
-	"stream",
-	"stream",
-	"alloc",
-	"alloc",
-	"alloc",
-	"alloc",
-	"alloc",
-	"alloc",
-	"alloc",
-	"alloc",
 	"mutex",
-	"mutex",
-	"mutex",
-	"mutex",
-	"mutex",
-	"mutex",
-	"lockshare",
-	"lockshare",
-	"lockshare",
-	"lockshare",
-	"lockshare",
-	"lockshare",
-	"lockshare",
-	"lockshare",
-	"lockshare",
-	"lockshare",
-	"lockshare",
-	"lockshare",
-	"sleep",
-	"sleep",
-	"sleep",
-	"sleep",
-	"sleep",
-	"sleep",
-	"fanout",
-	"fanout",
-	"fanout",
-	"fanout",
-	"fanout",
-	"fanout",
-	"varln",
-	"varln",
-	"varln",
-	"varln",
-	"varbi",
-	"varbi",
-	"syscall",
-	"syscall",
-	"syscall",
-	"syscall",
-	"mixed",
-	"mixed",
+	"alloc",
 }
 
 var Params = []float64{
@@ -878,70 +634,9 @@ var Params = []float64{
 	0,
 	0,
 	0,
-	0.25,
-	0.25,
-	4,
-	4,
-	64,
-	64,
-	256,
-	256,
-	1,
-	1,
-	8,
-	8,
-	64,
-	64,
-	0.0625,
-	0.0625,
-	1,
-	1,
-	4,
-	4,
-	16,
-	16,
-	0.1,
-	0.1,
-	0.5,
-	0.5,
-	1,
-	2,
-	2,
-	2,
-	2,
+	0,
 	2,
 	4,
-	4,
-	4,
-	4,
-	4,
-	4,
-	4,
-	4,
-	1,
-	1,
-	5,
-	5,
-	20,
-	20,
-	2,
-	2,
-	4,
-	4,
-	8,
-	8,
-	0.3,
-	0.3,
-	0.7,
-	0.7,
-	0.1,
-	0.1,
-	0.5,
-	0.5,
-	1,
-	1,
-	1,
-	1,
 }
 
 var IsViolator = []bool{
@@ -1065,67 +760,6 @@ var IsViolator = []bool{
 	false,
 	false,
 	false,
-	true,
-	true,
-	true,
-	true,
-	true,
-	true,
-	true,
-	true,
-	true,
-	true,
-	true,
-	true,
-	true,
-	true,
-	true,
-	true,
-	true,
-	true,
-	true,
-	true,
-	true,
-	true,
-	true,
-	true,
-	true,
-	true,
-	true,
-	true,
-	true,
-	true,
-	true,
-	true,
-	true,
-	true,
-	true,
-	true,
-	true,
-	true,
-	true,
-	true,
-	true,
-	true,
-	true,
-	true,
-	true,
-	true,
-	true,
-	true,
-	true,
-	true,
-	true,
-	true,
-	true,
-	true,
-	true,
-	true,
-	true,
-	true,
-	true,
-	true,
-	true,
 	true,
 	true,
 	true,
@@ -1375,133 +1009,11 @@ func Call(ctx context.Context, svc bigsvc.BigService, i int, x int64) (int64, er
 	case 119:
 		return svc.Ep119(ctx, x)
 	case 120:
-		return svc.MemWalk0P25_F1(ctx, x)
+		return svc.VioMemWalk(ctx, x)
 	case 121:
-		return svc.MemWalk0P25_F4(ctx, x)
+		return svc.VioMutex(ctx, x)
 	case 122:
-		return svc.MemWalk4_F1(ctx, x)
-	case 123:
-		return svc.MemWalk4_F4(ctx, x)
-	case 124:
-		return svc.MemWalk64_F1(ctx, x)
-	case 125:
-		return svc.MemWalk64_F4(ctx, x)
-	case 126:
-		return svc.MemWalk256_F1(ctx, x)
-	case 127:
-		return svc.MemWalk256_F4(ctx, x)
-	case 128:
-		return svc.Stream1_F1(ctx, x)
-	case 129:
-		return svc.Stream1_F4(ctx, x)
-	case 130:
-		return svc.Stream8_F1(ctx, x)
-	case 131:
-		return svc.Stream8_F4(ctx, x)
-	case 132:
-		return svc.Stream64_F1(ctx, x)
-	case 133:
-		return svc.Stream64_F4(ctx, x)
-	case 134:
-		return svc.Alloc0P0625_F1(ctx, x)
-	case 135:
-		return svc.Alloc0P0625_F4(ctx, x)
-	case 136:
-		return svc.Alloc1_F1(ctx, x)
-	case 137:
-		return svc.Alloc1_F4(ctx, x)
-	case 138:
-		return svc.Alloc4_F1(ctx, x)
-	case 139:
-		return svc.Alloc4_F4(ctx, x)
-	case 140:
-		return svc.Alloc16_F1(ctx, x)
-	case 141:
-		return svc.Alloc16_F4(ctx, x)
-	case 142:
-		return svc.Mutex0P1_F1(ctx, x)
-	case 143:
-		return svc.Mutex0P1_F4(ctx, x)
-	case 144:
-		return svc.Mutex0P5_F1(ctx, x)
-	case 145:
-		return svc.Mutex0P5_F4(ctx, x)
-	case 146:
-		return svc.Mutex2_F1(ctx, x)
-	case 147:
-		return svc.Mutex2_F4(ctx, x)
-	case 148:
-		return svc.LockShare2_F1_0(ctx, x)
-	case 149:
-		return svc.LockShare2_F1_1(ctx, x)
-	case 150:
-		return svc.LockShare2_F4_0(ctx, x)
-	case 151:
-		return svc.LockShare2_F4_1(ctx, x)
-	case 152:
-		return svc.LockShare4_F1_0(ctx, x)
-	case 153:
-		return svc.LockShare4_F1_1(ctx, x)
-	case 154:
-		return svc.LockShare4_F1_2(ctx, x)
-	case 155:
-		return svc.LockShare4_F1_3(ctx, x)
-	case 156:
-		return svc.LockShare4_F4_0(ctx, x)
-	case 157:
-		return svc.LockShare4_F4_1(ctx, x)
-	case 158:
-		return svc.LockShare4_F4_2(ctx, x)
-	case 159:
-		return svc.LockShare4_F4_3(ctx, x)
-	case 160:
-		return svc.Sleep1_F1(ctx, x)
-	case 161:
-		return svc.Sleep1_F4(ctx, x)
-	case 162:
-		return svc.Sleep5_F1(ctx, x)
-	case 163:
-		return svc.Sleep5_F4(ctx, x)
-	case 164:
-		return svc.Sleep20_F1(ctx, x)
-	case 165:
-		return svc.Sleep20_F4(ctx, x)
-	case 166:
-		return svc.Fanout2_F1(ctx, x)
-	case 167:
-		return svc.Fanout2_F4(ctx, x)
-	case 168:
-		return svc.Fanout4_F1(ctx, x)
-	case 169:
-		return svc.Fanout4_F4(ctx, x)
-	case 170:
-		return svc.Fanout8_F1(ctx, x)
-	case 171:
-		return svc.Fanout8_F4(ctx, x)
-	case 172:
-		return svc.VarLn0P3_F1(ctx, x)
-	case 173:
-		return svc.VarLn0P3_F4(ctx, x)
-	case 174:
-		return svc.VarLn0P7_F1(ctx, x)
-	case 175:
-		return svc.VarLn0P7_F4(ctx, x)
-	case 176:
-		return svc.VarBi0P1_F1(ctx, x)
-	case 177:
-		return svc.VarBi0P1_F4(ctx, x)
-	case 178:
-		return svc.Sys0P5_F1(ctx, x)
-	case 179:
-		return svc.Sys0P5_F4(ctx, x)
-	case 180:
-		return svc.Sys1_F1(ctx, x)
-	case 181:
-		return svc.Sys1_F4(ctx, x)
-	case 182:
-		return svc.Mixed1_F1(ctx, x)
-	case 183:
-		return svc.Mixed1_F4(ctx, x)
+		return svc.VioAlloc(ctx, x)
 	}
 	return 0, fmt.Errorf("no endpoint %d", i)
 }

@@ -1,20 +1,29 @@
 #!/usr/bin/env python3
-"""Rule-A per-endpoint dictionary (shared by every analysis script).
+"""Dictionary code shared by every analysis script.
 
-    D_e[rho, avgS] = FL_e + W(rho, avgS)                       (rule A, FIFO additive)
+Service dictionary, mix-corrected (Phase E; PHASED-HANDOFF.md section 6) -- the current form:
 
-Notation (Phase B handoff, section 1):
-    Lat_e   per-endpoint latency, including the admission wait (caller send stamp
-            -> handler return; the recorder's f stream, or the caller's RTT)
-    FL_e    floor latency of a single e request on a quiet system (y-axis floor)
-    c_e     CPU time per request of e (feeds rho); = FL_e for pure-CPU handlers
+    Fbar  = sum_e %_e FL_e              pooled floor of the window's mix   (FL_e per-endpoint constant, from the sweep)
+    cbar  = sum_e %_e c_e ;  c2bar = sum_e %_e c_e^2                        (c_e per-endpoint constant)
+    K     = c2bar / (2 cbar)            residual-work factor of the mix (P-K)
+    rho   = lambda cbar / (f/f_nom) / k offered utilisation (k = cores of the service; rho includes the /k)
+    h(rho) = W_sweep(rho) / K(sweep mix)   stored curve, mix-free; W_sweep = pooled p50 - Fbar(sweep mix) per rho bin
+    Fbar (Phase F) = median of the %_e-weighted mixture of the endpoints' floor distributions FL_e(q) (41 quantiles of
+                     each endpoint's lowest-step samples); FL_e = FL_e(0.5) is the scalar floor in the tables
+    D[rho; mix] = Fbar + h(rho) K(window)  the dictionary
+    %ext = (Lat - D) / Lat               Lat = pooled server-side p50 of the window
+
+One FIFO line; k only makes rho a fraction of capacity. Lat online and W_sweep offline are the same statistic
+(pooled p50). The per-endpoint form D_e[rho] = FL_e + W(rho) of Phases B-D (fit_rule_a, WaitModel) is kept below
+for the comparison columns (D_new) and is retired as a dictionary.
+
+Notation of the older code (Phases B-D):
+    Lat_e   per-endpoint latency (GORDION_LAT: unstamped = tap -> return minus downstream-blocked, the default)
+    FL_e    floor latency of a single e request on a quiet system
+    c_e     CPU time per request of e (feeds rho)
     %_e     share of e in the window's arrivals
-    rho     = lambda * sum_e %_e c_e   offered utilisation (busy-seconds/second); /k on k cores
-    avgS    = sum_e %_e c_e            mean service time of the window's mix (second W input)
-    W       shared wait, one curve per service: median_e (Lat_e - FL_e) per rho bin
-    sigma_e std over windows of the per-endpoint residual Lat_e - FL_e - W (additive view)
-
-Rule B (Lat_e = FL_e * g(rho)) is kept only as a diagnostic (dispersion of Lat_e/FL_e).
+    avgS    = sum_e %_e c_e  (= cbar)
+    W       shared wait, one curve per service: median_e (Lat_e - FL_e) per rho bin (rule A)
 """
 import json
 import os
@@ -34,10 +43,10 @@ LAT_MODE = os.environ.get("GORDION_LAT", "unstamped")
 (EP_A, EP_N, EP_P50, EP_P90, EP_P99, EP_MEAN, EP_MAX, EP_PP50, EP_PP90, EP_Q50, EP_Q90,
  EP_X50, EP_X90, EP_NS, EP_F50, EP_F90) = range(16)
 
-NOTATION = (("Lat_e = within-service latency (tap -> return, downstream-blocked time excluded);  " if LAT_MODE == "unstamped" else
-             "Lat_e = per-endpoint latency incl. admission wait;  ") + "FL_e = floor;  c_e = CPU/req;  "
-            "rho = lambda*sum %_e*c_e (/k on k cores);  avgS = sum %_e*c_e;  W = median_e(Lat_e - FL_e);  "
-            "D_e[rho] = FL_e + W")
+NOTATION = (("Lat = pooled p50 of the within-service latency (tap -> return, downstream-blocked time excluded);  " if LAT_MODE == "unstamped" else
+             "Lat = pooled p50 of the per-endpoint latency incl. admission wait;  ") + "FL_e = floor;  c_e = CPU/req;  "
+            "Fbar = med(sum %_e FL_e(q)) (mixture median of the floor distributions);  cbar = sum %_e c_e;  K = c2bar/(2 cbar);  rho = lambda cbar/(f/f_nom)/k;  "
+            "h(rho) = W_sweep(rho)/K(sweep);  D[rho; mix] = Fbar + h(rho) K")
 
 
 # ----------------------------------------------------------------------------- inputs
@@ -77,7 +86,7 @@ def costs_from_idle_run(R, settle=2.0, nominal_mhz=None):
         if w["t"] < t0 + settle * 1000:
             continue
         tot_cpu += w["cpu"]; secs += window_len_s(w)
-        cyc += w["cpu"] * (w.get("mhz", nominal) / nominal)  # CPU ns scaled to the nominal clock
+        cyc += w["cpu"] * ((clock_mhz(w) or nominal) / nominal)  # CPU ns scaled to the nominal clock (only with GORDION_FREQ_NORM=1)
         for e, v in w["ep"].items():
             n[e] += v[EP_N]
     tot = sum(n.values())
@@ -99,7 +108,7 @@ def costs_from_sweep(R, settle=5.0, nominal_mhz=None, min_windows=200):
     for w in W:
         if "cpu" not in w:
             continue
-        cpu = w["cpu"] * (w.get("mhz", nominal) / nominal) / 1e6  # ms at nominal clock
+        cpu = w["cpu"] * ((clock_mhz(w) or nominal) / nominal) / 1e6  # ms at nominal clock (only with GORDION_FREQ_NORM=1)
         rows.append([window_len_s(w)] + [w["ep"].get(e, [0])[EP_A] for e in names]); y.append(cpu)
     if len(rows) < min_windows:
         return {}, 0.0
@@ -120,6 +129,14 @@ def window_len_s(w):
 
 
 FREQ_NORM = os.environ.get("GORDION_FREQ_NORM", "0") == "1"
+
+
+def clock_mhz(w):
+    """The window's clock for cost / capacity normalisation: the recorder's "mhz" only when GORDION_FREQ_NORM=1.
+    On clnode258 (no cpufreq driver) the recorder falls back to /proc/cpuinfo, which under-reports idle cores (2.0 GHz
+    median at 40 req/s, 3.1 GHz when busy) while the MSR pin holds every core at 3.1 GHz = f_nom; there the field must
+    be ignored (GORDION_FREQ_NORM=0) or the costs of lightly loaded runs come out 20-35 % low."""
+    return w.get("mhz") if FREQ_NORM else None
 
 
 def rho_of_window(w, c_ms):
@@ -268,7 +285,28 @@ def overloaded_steps(R, windows, step_of, tol=0.95):
     # a downstream SUT sees only a fraction of the generator's rate (its share of the call
     # graph): compare each step's served/target ratio with the lowest step's
     ref = served[min(served)]
-    return {s for s, v in served.items() if v < tol * ref}
+    over = {s for s, v in served.items() if v < tol * ref}
+    # Phase D: with the admission gate the in-process queue is bounded (gRPC's per-connection stream limit), so an
+    # overloaded step shows a flat ~40 ms wait in the server stream while the backlog sits in the socket; the load
+    # generator's own latency sees it. A step whose caller-side median latency exceeds OVERLOAD_CALLER x the
+    # server-side median is overloaded (the in-process stream is truncated there).
+    reports = R.get("reports") or []
+    if reports:
+        ratio = {}
+        for s in sorted(set(step_of)):
+            srv = [v for w, st in zip(windows, step_of) if st == s for v in [w["all"][1]] if v > 0]
+            cl = [r["all"][1] for r in reports if r.get("step") == s and r["all"][0] > 0]
+            if len(srv) >= 5 and len(cl) >= 5:
+                ratio[s] = np.median(cl) / np.median(srv)
+        if ratio:
+            # relative to the lowest step: a downstream SUT's caller latency is the whole end-to-end path, so only a
+            # *growth* of the caller/server ratio marks a backlog outside the SUT's process
+            r0 = ratio[min(ratio)]
+            over |= {s for s, v in ratio.items() if v > OVERLOAD_CALLER * r0}
+    return over
+
+
+OVERLOAD_CALLER = 3.0  # growth of (caller-side p50 / server-side p50) vs the lowest step above this = backlog outside the process
 
 
 # ----------------------------------------------------------------------------- rule A fit
@@ -617,3 +655,199 @@ def notation(fig, extra=""):
     txt = NOTATION + (("\n" + extra) if extra else "")
     fig.subplots_adjust(bottom=0.2 if extra else 0.16)
     fig.text(0.01, 0.01, txt, fontsize=6.5, family="monospace", va="bottom", ha="left", wrap=True)
+
+
+# ----------------------------------------------------------------------------- service dictionary (Phase E, section 6)
+WAIT_GUARD_NOISE = 3.0  # the wait guard is on only if the profiled W_max exceeds this many times the floor's own noise
+NOISE_RHO = 0.5         # (Phase E rule, retired in Phase F: the noise is the lowest step's own per-second spread)
+
+
+FLOOR_Q = 41  # quantile points kept per endpoint for the "mixture" Fbar
+
+
+def floor_quantiles_lowest_step(windows, step_of, names, fl):
+    """Per endpoint, FLOOR_Q quantiles of its lowest-step Lat_e samples (the floor distribution); endpoints without
+    samples get their FL_e as a single point."""
+    fs = min(step_of)
+    out = {}
+    for e in names:
+        acc = []
+        for w, st in zip(windows, step_of):
+            if st == fs:
+                x, _ = lat_samples(w, e)
+                acc.extend((x / 1e6).tolist())
+        out[e] = np.quantile(acc, np.linspace(0, 1, FLOOR_Q)) if len(acc) >= 5 else np.array([fl[e]])
+    return out
+
+
+def mix_stats(shares, c_ms, fl, fbar="mean", flq=None):
+    """Fbar, cbar, c2bar and K of a mix {e: share (or count)}. Fbar = sum %_e FL_e ("mean", section 6), the
+    share-weighted median of FL_e ("median"), or the median of the mixture of the endpoints' floor distributions
+    ("mixture": the quantile points of each endpoint weighted by its share -- the floor statistic that matches a
+    pooled-median Lat whether the endpoints' latencies overlap or form separate modes)."""
+    tot = float(sum(shares.values()))
+    if tot <= 0:
+        return dict(Fbar=np.nan, cbar=np.nan, c2=np.nan, K=np.nan)
+    sh = {e: v / tot for e, v in shares.items() if v > 0}
+    cb = sum(v * c_ms.get(e, 0.0) for e, v in sh.items()); c2 = sum(v * c_ms.get(e, 0.0) ** 2 for e, v in sh.items())
+    K = c2 / (2 * cb) if cb > 0 else np.nan
+    if fbar == "mixture" and flq:
+        pts, wts = [], []
+        for e, v in sh.items():
+            q = flq.get(e)
+            if q is None or len(q) == 0:
+                q = np.array([fl.get(e, 0.0)])
+            pts.append(np.asarray(q, float)); wts.append(np.full(len(q), v / len(q)))
+        pts = np.concatenate(pts); wts = np.concatenate(wts)
+        o = np.argsort(pts); c = np.cumsum(wts[o])
+        F = float(pts[o][int(np.searchsorted(c, 0.5 * c[-1]))])
+    elif fbar == "median":
+        acc, F = 0.0, np.nan
+        for e in sorted(sh, key=lambda e: fl.get(e, 0.0)):
+            acc += sh[e]
+            if acc >= 0.5:
+                F = fl.get(e, 0.0); break
+    else:
+        F = sum(v * fl.get(e, 0.0) for e, v in sh.items())
+    return dict(Fbar=float(F), cbar=float(cb), c2=float(c2), K=float(K))
+
+
+class ServiceDict:
+    """D[rho; mix] = Fbar(mix) + h(rho) K(mix) from one profiling sweep (fit_service_dict). Stores h per rho bin,
+    FL_e, c_e, the sweep's own pooled p50 per bin (= the dictionary at the sweep mix), the profiled W_max and the
+    floor noise for the guards (section 1.3): rho outside the profiled range -> n/a; Lat - Fbar above W_max -> n/a
+    only if W_max > WAIT_GUARD_NOISE x noise (otherwise the wait guard is off: a floor-only service)."""
+
+    def __init__(self, k, mids, p50, Fbar_b, K_b, W, h, fl, c_ms, names, Fbar_sweep, K_sweep, cbar_sweep, wmax, noise, noise_steps,
+                 fbar, steps, overloaded, label, csrc, flq=None):
+        self.flq = flq
+        ok = np.isfinite(h)
+        half = float(mids[1] - mids[0]) / 2 if len(mids) > 1 else 0.0
+        self.k = k; self.mids = np.asarray(mids)[ok]; self.h = np.asarray(h)[ok]; self.W = np.asarray(W)[ok]; self.p50 = np.asarray(p50)[ok]
+        self.Fbar_b = np.asarray(Fbar_b)[ok]; self.K_b = np.asarray(K_b)[ok]
+        self.rho_min = float(self.mids.min() - half); self.rho_max = float(self.mids.max() + half)
+        self.fl = fl; self.c_ms = c_ms; self.names = names; self.Fbar_sweep = Fbar_sweep; self.K_sweep = K_sweep; self.cbar_sweep = cbar_sweep
+        self.wmax = float(wmax); self.noise = float(noise); self.noise_steps = noise_steps; self.fbar = fbar; self.steps = steps
+        self.overloaded = overloaded; self.label = label; self.csrc = csrc
+        self.wait_guard = bool(self.wmax > WAIT_GUARD_NOISE * self.noise)
+
+    def h_at(self, rho):
+        return float(np.interp(rho, self.mids, self.h))
+
+    def p50_at(self, rho):
+        """the sweep's own pooled p50 at rho: the dictionary evaluated at the sweep mix"""
+        return float(np.interp(rho, self.mids, self.p50))
+
+    def mix(self, shares):
+        return mix_stats(shares, self.c_ms, self.fl, self.fbar, self.flq)
+
+    def fbar_both(self, shares):
+        """(Fbar mean, Fbar mixture median) of a mix, for the comparison columns"""
+        return (mix_stats(shares, self.c_ms, self.fl, "mean")["Fbar"], mix_stats(shares, self.c_ms, self.fl, "mixture", self.flq)["Fbar"])
+
+    def predict(self, rho, shares):
+        m = self.mix(shares)
+        return m["Fbar"] + self.h_at(rho) * m["K"], m
+
+    def guard(self, rho, lat, Fbar):
+        """'' (usable), 'rho' (outside the profiled range) or 'wait' (Lat - Fbar above the profiled W_max, wait guard on)"""
+        if rho < self.rho_min or rho > self.rho_max:
+            return "rho"
+        if self.wait_guard and lat - Fbar > self.wmax:
+            return "wait"
+        return ""
+
+    def describe(self):
+        return (f"{self.label}: Fbar({self.fbar}) {self.Fbar_sweep:.3f} ms, cbar {self.cbar_sweep:.3f} ms, K {self.K_sweep:.3f} ms, {len(self.mids)} rho bins in "
+                f"[{self.rho_min:.2f}, {self.rho_max:.2f}], W_max {self.wmax:.2f} ms, floor noise {self.noise:.3f} ms over steps {self.noise_steps} "
+                f"-> wait guard {'on' if self.wait_guard else 'off'}; overloaded steps dropped {self.overloaded or 'none'}; c_e: {self.csrc}")
+
+    def save(self, path):
+        json.dump(dict(form="D[rho; mix] = Fbar + h(rho) K", fbar=self.fbar, k=self.k, rho=self.mids.round(4).tolist(), h=self.h.round(5).tolist(),
+                       W_sweep_ms=self.W.round(4).tolist(), p50_sweep_ms=self.p50.round(4).tolist(), Fbar_sweep_ms=self.Fbar_sweep, K_sweep_ms=self.K_sweep,
+                       cbar_sweep_ms=self.cbar_sweep, wmax_ms=self.wmax, floor_noise_ms=self.noise, noise_steps=self.noise_steps, wait_guard=self.wait_guard,
+                       fl_ms=self.fl, c_ms=self.c_ms, overloaded_steps=self.overloaded, source=self.label, costs=self.csrc,
+                       floor_quantiles_ms=({e: np.round(q, 5).tolist() for e, q in self.flq.items()} if self.flq else None)),
+                  open(path, "w"), indent=1)
+
+
+def floor_noise_lowest_step(windows, step_of, step):
+    """IQR (p75 - p25) of the per-second pooled p50 over the windows of one step: the floor's own noise, robust to the
+    idle-core wake-up outliers that a lightly loaded Go service shows second to second."""
+    sec = defaultdict(list)
+    for w, st in zip(windows, step_of):
+        if st == step:
+            for e in w["ep"]:
+                x, _ = lat_samples(w, e)
+                if len(x):
+                    sec[w["t"] // 1000].extend((x / 1e6).tolist())
+    p = np.array([np.median(v) for v in sec.values() if len(v) >= 5])
+    return float(np.percentile(p, 75) - np.percentile(p, 25)) if len(p) >= 5 else 0.0
+
+
+def fit_service_dict(R, settle=5.0, costs_file=None, fbar="mixture", nbins=24, min_n=20, smooth_s=1.0, label=None):
+    """Section 1.1: h(rho) = W_sweep(rho) / K(sweep mix) from one profiling sweep, with W_sweep = pooled p50 of all
+    requests in the rho bin minus Fbar of the bin's arrival mix; FL_e = per-endpoint median at the lowest step; c_e
+    from the costs file (or the run's configured cpu_ms). Overloaded steps (served < target, caller/server ratio
+    growth, or pooled wait > OVERLOAD_WAIT x cbar) are dropped. Floor noise = the lowest kept step's second-to-second
+    spread of the pooled p50 (IQR), see floor_noise_lowest_step."""
+    names = R["run"]["endpoints"]; cfg = dict(zip(names, R["run"]["floors_ms"]))
+    k = cpuset_size(R["meta"].get("cpuset", "0-7"))
+    c_ms, csrc = costs_of_run(R, costs_file)
+    W, step_of, _ = settled_windows(R, settle)
+    fl, _ = floors_lowest_step(W, step_of, names, cfg)
+    flq = floor_quantiles_lowest_step(W, step_of, names, fl)  # FL_e(q): stored with the dictionary (Phase F: Fbar = mixture median)
+    over = overloaded_steps(R, W, step_of)
+    steps = {}
+    for s in sorted(set(step_of)):
+        ws = [w for w, st in zip(W, step_of) if st == s]
+        samp = np.concatenate([lat_samples(w, e)[0] for w in ws for e in w["ep"]]) / 1e6
+        arr = defaultdict(float)
+        for w in ws:
+            for e, v in w["ep"].items():
+                arr[e] += v[EP_A]
+        m = mix_stats(arr, c_ms, fl, fbar, flq)
+        rho = float(np.mean([rho_of_window(w, c_ms) for w in ws])) / k
+        steps[s] = dict(rho=rho, p50=float(np.median(samp)) if len(samp) else np.nan, n=len(samp), **m)
+        if len(samp) and steps[s]["p50"] - m["Fbar"] > OVERLOAD_WAIT * m["cbar"]:
+            over.add(s)
+    keep = [i for i, s in enumerate(step_of) if s not in over]
+    Wk = [W[i] for i in keep]
+    rho = rho_series(Wk, c_ms, smooth_s) / k
+    edges = np.linspace(0, 1.05, nbins + 1); mids = (edges[:-1] + edges[1:]) / 2
+    bins = np.clip(np.digitize(rho, edges) - 1, 0, nbins - 1)
+    pooled = [[] for _ in range(nbins)]; arrb = [defaultdict(float) for _ in range(nbins)]
+    for i, w in enumerate(Wk):
+        b = bins[i]
+        for e, v in w["ep"].items():
+            x, _ = lat_samples(w, e)
+            if len(x):
+                pooled[b].append(x / 1e6)
+            arrb[b][e] += v[EP_A]
+    p50 = np.full(nbins, np.nan); Fb = np.full(nbins, np.nan); Kb = np.full(nbins, np.nan)
+    # the profiled range is the range of the steps actually run (plus one bin of slack): bins populated only by the
+    # rho noise of the highest step's windows are not operating points
+    kept_rho = [v["rho"] for s_, v in steps.items() if s_ not in over]
+    top = (max(kept_rho) if kept_rho else 1.05) + (edges[1] - edges[0])
+    for b in range(nbins):
+        if pooled[b] and mids[b] <= top:
+            x = np.concatenate(pooled[b])
+            if len(x) >= min_n:
+                m = mix_stats(arrb[b], c_ms, fl, fbar, flq)
+                p50[b] = np.median(x); Fb[b] = m["Fbar"]; Kb[b] = m["K"]
+    Wb = p50 - Fb
+    with np.errstate(invalid="ignore", divide="ignore"):
+        h = Wb / Kb
+    arr_all = defaultdict(float)
+    for w in Wk:
+        for e, v in w["ep"].items():
+            arr_all[e] += v[EP_A]
+    ms = mix_stats(arr_all, c_ms, fl, fbar, flq)
+    kept_steps = {s: v for s, v in steps.items() if s not in over and np.isfinite(v["p50"])}
+    # floor noise (Phase F): the lowest kept step's own second-to-second spread of the pooled p50 (p95 - p5 over its
+    # one-second windows). The Phase E rule (max - min of the per-step p50 over the steps at rho <= 0.5) counted a wait
+    # that rises steadily from low load as noise (geo under the one-slot gate) and switched the wait guard off there.
+    low = [min(kept_steps)] if kept_steps else []
+    noise = floor_noise_lowest_step(W, step_of, low[0]) if low else 0.0
+    return ServiceDict(k, mids, p50, Fb, Kb, Wb, h, fl, c_ms, names, ms["Fbar"], ms["K"], ms["cbar"], np.nanmax(Wb) if np.isfinite(Wb).any() else 0.0,
+                       noise, sorted(low), fbar, steps, sorted(over), label or os.path.basename(R["dir"]), csrc, flq)
