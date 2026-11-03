@@ -6,6 +6,8 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -146,12 +148,15 @@ func TestFullLatency(t *testing.T) {
 		}
 		if a, ok := v.Ep["A"]; ok && a[1] == 1 {
 			seen++
-			if len(a) != 16 {
-				t.Fatalf("ep stats len %d, want 16: %v", len(a), a)
+			if len(a) != 18 { // a + 17 stats (g50, g90 appended in Phase D)
+				t.Fatalf("ep stats len %d, want 18: %v", len(a), a)
 			}
-			ns, x50, f50, p50 := a[13], a[11], a[14], a[3]
+			ns, x50, f50, p50, g50 := a[13], a[11], a[14], a[3], a[16]
 			if ns != 1 || f50 < x50+p50 || x50 < int64(2*time.Millisecond) || p50 < int64(3*time.Millisecond) {
 				t.Fatalf("ns=%d x50=%d p50=%d f50=%d", ns, x50, p50, f50)
+			}
+			if g50 < 0 || g50 > p50 {
+				t.Fatalf("gate wait g50=%d outside [0, p50=%d]", g50, p50)
 			}
 		}
 		if bb, ok := v.Ep["B"]; ok && bb[1] == 1 && (bb[13] != 0 || bb[14] != 0) {
@@ -189,5 +194,66 @@ func TestPreDoesNotAccumulate(t *testing.T) {
 	n := strings.Count(string(b), `"rawx":{"A":[`)
 	if n != 1 {
 		t.Fatalf("rawx with samples appeared in %d windows, want exactly 1: %s", n, string(b))
+	}
+}
+
+// TestGate: with capacity 1 two concurrent requests run one after the other and the
+// second one's wait is charged to it as g (and included in its total).
+func TestGate(t *testing.T) {
+	t.Setenv("GORDION_GATE_CAP", "1")
+	r, err := newRecorderOut("svc", []string{"A"}, "", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer r.Stop()
+	var inside, maxInside int32
+	var mu sync.Mutex
+	var gates []int64
+	var wg sync.WaitGroup
+	for i := 0; i < 4; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			ctx, tok := r.Begin(context.Background(), 0)
+			n := atomic.AddInt32(&inside, 1)
+			for {
+				m := atomic.LoadInt32(&maxInside)
+				if n <= m || atomic.CompareAndSwapInt32(&maxInside, m, n) {
+					break
+				}
+			}
+			time.Sleep(5 * time.Millisecond)
+			// a downstream call releases the slot: another handler may run meanwhile
+			atomic.AddInt32(&inside, -1)
+			PauseBegin(ctx)
+			time.Sleep(2 * time.Millisecond)
+			PauseEnd(ctx)
+			atomic.AddInt32(&inside, 1)
+			time.Sleep(1 * time.Millisecond)
+			atomic.AddInt32(&inside, -1)
+			mu.Lock()
+			gates = append(gates, atomic.LoadInt64(&tok.st.gateNs))
+			mu.Unlock()
+			r.End(tok, false)
+		}()
+	}
+	wg.Wait()
+	if maxInside != 1 {
+		t.Fatalf("gate cap 1 let %d handlers run at once", maxInside)
+	}
+	if r.gateCap != 1 {
+		t.Fatalf("gateCap %d, want 1", r.gateCap)
+	}
+	waited := 0
+	for _, g := range gates {
+		if g >= int64(4*time.Millisecond) {
+			waited++
+		}
+	}
+	if waited < 3 {
+		t.Fatalf("only %d of 4 requests recorded a gate wait >= 4 ms: %v", waited, gates)
+	}
+	if len(r.gate) != 0 {
+		t.Fatalf("gate not released: %d slots held", len(r.gate))
 	}
 }
