@@ -25,7 +25,7 @@ sys.path.insert(0, os.path.dirname(__file__))
 from dictionary import NOTATION
 
 COLS = ("t", "lambda", "rho", "util", "lat_ms", "D_old_ms", "D_new_ms", "lat_twin_ms", "ext_old", "ext_new", "ext_old_raw", "ext_new_raw",
-        "y", "y_raw", "ramp", "usable", "truth_ext", "D_mix_ms", "ext_mix", "ext_mix_raw")
+        "y", "y_raw", "ramp", "usable", "truth_ext", "D_mix_ms", "ext_mix", "ext_mix_raw", "rho_slot")
 NEW = dict(D="D_mix_ms", ext="ext_mix", raw="ext_mix_raw", cell="cell_mix", cell_raw="cell_mix_raw",
            label="D[rho; mix]: service dictionary, mix-corrected, at this second's mix", short="mix D[rho; mix]", ext_label="%ext mix: (Lat - D[rho; mix]) / Lat")
 
@@ -89,8 +89,13 @@ def main():
     for ci, (name, d) in enumerate(runs):
         ax = axes[:, ci]; t = d["t"]
         ax[0].plot(t, d["ramp"], color="#d62728"); ax[0].set_ylabel(f"share of\n{a.mixB}", fontsize=8); ax[0].set_ylim(-0.05, 1.05)
-        ax[1].plot(t, d["util"], color="#1f77b4", label="rho"); ax[1].set_ylabel("rho = lambda cbar/(f/f_nom)/k", fontsize=8); ax[1].axhline(0.65, color="0.6", ls=":", lw=0.8)
-        ax[1].set_ylim(0, max(1.05, np.nanmax(d["util"]) * 1.1))
+        if np.isfinite(d["rho_slot"]).any():  # gated row: rho' = utilisation of the executing slots (the dictionary stays keyed by rho)
+            ratio = float(np.nanmedian(d["util"] / d["rho_slot"]))
+            ax[1].plot(t, d["rho_slot"], color="#1f77b4", label="rho'"); ax[1].set_ylabel(f"rho' = lambda cbar/(f/f_nom)/slots\n(rho = rho' x {ratio:.2f})", fontsize=8); ax[1].axhline(1.0, color="0.6", ls=":", lw=0.8)
+            ax[1].set_ylim(0, max(1.1, np.nanmax(d["rho_slot"]) * 1.1))
+        else:
+            ax[1].plot(t, d["util"], color="#1f77b4", label="rho"); ax[1].set_ylabel("rho = lambda cbar/(f/f_nom)/k", fontsize=8); ax[1].axhline(0.65, color="0.6", ls=":", lw=0.8)
+            ax[1].set_ylim(0, max(1.05, np.nanmax(d["util"]) * 1.1))
         a2 = ax[1].twinx(); a2.plot(t, d["lambda"], color="0.4", lw=0.8, label="lambda"); a2.set_ylabel("lambda (req/s)", fontsize=8, color="0.4")
         a2.set_ylim(0, np.nanmax(d["lambda"]) * 1.3)
         ax[2].plot(t, d["lat_ms"], color="k", lw=1.2, label="observed pooled p50 (Lat)")

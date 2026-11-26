@@ -31,6 +31,8 @@
 //	                       (e.g. "2-9" or "2,3,4") and set GOMAXPROCS to its size
 //	BIGSVC_NS_PER_ITER     skip spin calibration and use this ns/iteration
 //	BIGSVC_MEMWALK_MB      working set for memwalk endpoints with Param 0 (legacy VioMemWalk; default 256)
+//	BIGSVC_MEMWALK_STEPS   fixed steps per request for memwalk endpoints with Param 0 (default 0: FloorMs ÷ the
+//	                       time per step measured at start-up, which makes the work depend on what else runs then)
 //	BIGSVC_CALIB_ITERS     iterations per calibration rep (default 20e6)
 package bigsvc
 
@@ -71,11 +73,12 @@ type BigServiceImpl struct {
 	sysCalls  []int64 // syscall: number of syscalls
 	allocB    []int   // alloc / mixed: bytes of garbage per request
 
-	legacyMB int              // BIGSVC_MEMWALK_MB, working set for memwalk endpoints with Param 0
-	walks    map[int][]uint32 // pointer-chase arrays keyed by working-set size in KB
-	streams  map[int][]uint64 // sequential-read blocks keyed by size in MB
-	locks    []*sync.Mutex    // index: per-endpoint private lock (mutex) or group lock (lockshare)
-	lockOf   []int            // endpoint -> index into locks
+	legacyMB    int              // BIGSVC_MEMWALK_MB, working set for memwalk endpoints with Param 0
+	legacySteps int64            // BIGSVC_MEMWALK_STEPS, fixed steps for memwalk endpoints with Param 0 (0: calibrated)
+	walks       map[int][]uint32 // pointer-chase arrays keyed by working-set size in KB
+	streams     map[int][]uint64 // sequential-read blocks keyed by size in MB
+	locks       []*sync.Mutex    // index: per-endpoint private lock (mutex) or group lock (lockshare)
+	lockOf      []int            // endpoint -> index into locks
 }
 
 // NewBigServiceImpl calibrates the kernels and prepares every endpoint.
@@ -99,6 +102,7 @@ func NewBigServiceImpl(ctx context.Context) (*BigServiceImpl, error) {
 
 	// Allocate the shared arrays first (one per distinct size).
 	s.legacyMB = envInt("BIGSVC_MEMWALK_MB", 256)
+	s.legacySteps = int64(envInt("BIGSVC_MEMWALK_STEPS", 0))
 	for _, e := range Endpoints {
 		switch e.Kind {
 		case "memwalk":
@@ -135,7 +139,11 @@ func NewBigServiceImpl(ctx context.Context) (*BigServiceImpl, error) {
 			// goroutine; var*: the median request.
 			s.iters[i] = ms(e.FloorMs - sleepMs(e))
 		case "memwalk":
-			s.steps[i] = int64(e.FloorMs * 1e6 / walkNs[s.walkKey(e.Param)])
+			if e.Param == 0 && s.legacySteps > 0 {
+				s.steps[i] = s.legacySteps
+			} else {
+				s.steps[i] = int64(e.FloorMs * 1e6 / walkNs[s.walkKey(e.Param)])
+			}
 		case "stream":
 			s.steps[i] = int64(e.FloorMs * 1e6 / streamNs[int(e.Param)])
 		case "alloc":
@@ -165,7 +173,7 @@ func NewBigServiceImpl(ctx context.Context) (*BigServiceImpl, error) {
 			return nil, fmt.Errorf("unknown endpoint kind %q", e.Kind)
 		}
 	}
-	cal := map[string]any{"event": "bigsvc_calibration", "ns_per_iter": s.nsPerIter, "walk_ns_per_step": walkNs,
+	cal := map[string]any{"event": "bigsvc_calibration", "ns_per_iter": s.nsPerIter, "walk_ns_per_step": walkNs, "memwalk_steps_fixed": s.legacySteps,
 		"stream_ns_per_elem": streamNs, "syscall_ns": sysNs, "gomaxprocs": runtime.GOMAXPROCS(0), "endpoints": n}
 	js, _ := json.Marshal(cal)
 	fmt.Println(string(js))

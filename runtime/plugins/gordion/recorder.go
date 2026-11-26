@@ -24,6 +24,10 @@
 //	 "gate":<admission gate capacity (G-A), absent when the gate is off>,
 //	 "sched":[p50,p90,count] <runtime scheduler latency of the window (G-B, ns): time goroutines
 //	          spent runnable before running, from runtime/metrics "/sched/latencies:seconds">,
+//	 "mchg":[n,changed] <Phase G G5.2: requests of the window, and how many ended on another OS thread (M) than they began on>
+//	 "rt":[gc_cpu_ns,gc_stw_pause_ns,mutex_wait_ns] <Phase G: GC CPU time (/cpu/classes/gc/total),
+//	          stop-the-world GC pause time (/sched/pauses/total/gc) and goroutine mutex wait
+//	          (/sync/mutex/wait/total) of the process during this window, ns; 0 where the Go version lacks the metric>,
 //	 "ep":{"Ep000":[a,n,p50,p90,p99,mean,max,pp50,pp90,q50,q90,x50,x90,ns,f50,f90,g50,g90],...}}
 //
 // g = admission-gate wait (Phase D, G-A): with GORDION_GATE on (default) the
@@ -81,6 +85,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"syscall"
 	"time"
 
 	"github.com/blueprint-uservices/blueprint/runtime/plugins/grpcopts"
@@ -155,6 +160,7 @@ var statePool = sync.Pool{New: func() any { return &reqState{} }}
 type Token struct {
 	start  int64
 	queue  int64
+	tid    int32 // G5.2: kernel thread id (M) at Begin; End compares, the window counts the changes
 	pre    int64 // ns from the client's send stamp to start (may be negative across hosts); noPre if the caller sent none
 	method int32
 	st     *reqState
@@ -163,6 +169,7 @@ type Token struct {
 type completion struct {
 	method  int32
 	err     bool
+	mChg    bool // G5.2: the handler ended on another OS thread than it began on
 	totalNs int64
 	blockNs int64
 	queueNs int64
@@ -209,11 +216,13 @@ type Recorder struct {
 	lastCPU  int64 // process CPU ns at the previous flush (0 = none yet)
 	disabled bool
 	raw      bool
+	readMHz  bool // Phase I: GORDION_READS contains "mhz" (default off)
 
 	gateOnce sync.Once
 	gate     chan struct{} // admission gate (G-A): buffered channel used as a semaphore; nil = off
 	gateCap  int
-	sched    *schedLat // runtime scheduler latency (G-B); nil = unavailable
+	sched    *schedLat   // runtime scheduler latency (G-B); nil = unavailable
+	rt       *rtCounters // Phase G: GC CPU / STW pause / mutex wait per window; nil = unavailable
 
 	arrivals []int64 // atomic, per method, reset every window
 	dropped  int64   // atomic
@@ -273,6 +282,9 @@ func newRecorderOut(serviceName string, methods []string, dest string, disabled 
 		return r, nil
 	}
 	r.raw = os.Getenv("GORDION_RAW") == "1"
+	// Phase I: the per-window clock read only on request (GORDION_READS contains "mhz"). Without a cpufreq driver it falls
+	// back to /proc/cpuinfo, ~3 ms of CPU per window on a 144-CPU node; the node agent reads APERF/MPERF instead.
+	r.readMHz = strings.Contains(os.Getenv("GORDION_READS"), "mhz")
 	if v := os.Getenv("GORDION_WINDOW_MS"); v != "" {
 		ms, err := strconv.Atoi(v)
 		if err != nil || ms <= 0 {
@@ -394,7 +406,7 @@ func (r *Recorder) Begin(ctx context.Context, m int) (context.Context, Token) {
 	// the service's own CPU pinning (bigsvc sets it from BIGSVC_CPUSET after start-up).
 	r.gateOnce.Do(r.initGate)
 	st.acquireGate(ctx)
-	return ctx, Token{start: start, queue: queue, pre: pre, method: int32(m), st: st}
+	return ctx, Token{start: start, queue: queue, pre: pre, method: int32(m), st: st, tid: int32(syscall.Gettid())}
 }
 
 // acquireGate takes a gate slot for the request (blocking; a cancelled ctx lets
@@ -507,7 +519,7 @@ func (r *Recorder) End(tok Token, isErr bool) {
 	tok.st.rec = nil
 	statePool.Put(tok.st)
 	select {
-	case r.ch <- completion{method: tok.method, err: isErr, totalNs: total, blockNs: blocked, queueNs: tok.queue, preNs: tok.pre, gateNs: gateNs}:
+	case r.ch <- completion{method: tok.method, err: isErr, totalNs: total, blockNs: blocked, queueNs: tok.queue, preNs: tok.pre, gateNs: gateNs, mChg: int32(syscall.Gettid()) != tok.tid}:
 	default:
 		atomic.AddInt64(&r.dropped, 1)
 	}
@@ -562,6 +574,7 @@ type bucket struct {
 	full  []int64 // pre + total - blocked, same requests as pre: Lat_e incl. the admission wait
 	gate  []int64 // admission-gate wait (G-A), every request (0 when the gate is off)
 	errs  int
+	mChg  int // G5.2: requests whose handler ended on another OS thread than it began on
 }
 
 func (r *Recorder) add(buckets []bucket, c completion) {
@@ -576,6 +589,9 @@ func (r *Recorder) add(buckets []bucket, c completion) {
 	}
 	if c.err {
 		b.errs++
+	}
+	if c.mChg {
+		b.mChg++
 	}
 }
 
@@ -712,8 +728,10 @@ func writeRaw(sb *strings.Builder, key string, methods []string, buckets []bucke
 
 func (r *Recorder) flush(winStart time.Time, buckets []bucket) {
 	var allTotal, allProc, allQueue, allPre, allFull, allGate []int64
-	var arrivals, errs int64
+	var arrivals, errs, mChg int64
 	for i := range buckets {
+		mChg += int64(buckets[i].mChg)
+		buckets[i].mChg = 0 // per-window count (the slices are re-sliced by the caller; this int is not) — k123g5 emitted it cumulative
 		allTotal = append(allTotal, buckets[i].total...)
 		allProc = append(allProc, buckets[i].proc...)
 		allQueue = append(allQueue, buckets[i].queue...)
@@ -759,17 +777,38 @@ func (r *Recorder) flush(winStart time.Time, buckets []bucket) {
 		}
 		r.lastCPU = cpu
 	}
-	if mhz := cpuFreqMHz(); mhz > 0 {
+	if !r.readMHz {
+	} else if mhz := cpuFreqMHz(); mhz > 0 {
 		// mean current frequency of the process's cores at the end of the window (sysfs cpufreq)
 		sb.WriteString(`,"mhz":`)
 		sb.WriteString(strconv.FormatInt(int64(mhz), 10))
 	}
+	// G5.2: [requests completed, of which the handler ended on another OS thread (M) than it began on]
+	sb.WriteString(`,"mchg":[`)
+	sb.WriteString(strconv.Itoa(len(allTotal)))
+	sb.WriteByte(',')
+	sb.WriteString(strconv.FormatInt(mChg, 10))
+	sb.WriteByte(']')
 	if r.gate != nil {
 		sb.WriteString(`,"gate":`)
 		sb.WriteString(strconv.Itoa(r.gateCap))
 	}
 	if r.sched == nil && !strings.HasSuffix(r.service, "@client") {
 		r.sched = newSchedLat()
+	}
+	if r.rt == nil && !strings.HasSuffix(r.service, "@client") {
+		r.rt = newRTCounters()
+	}
+	if r.rt != nil {
+		// Phase G: G (GC CPU, STW pauses) and the Go half of Q (mutex wait), ns in this window
+		gc, stw, mw := r.rt.delta()
+		sb.WriteString(`,"rt":[`)
+		sb.WriteString(strconv.FormatInt(gc, 10))
+		sb.WriteByte(',')
+		sb.WriteString(strconv.FormatInt(stw, 10))
+		sb.WriteByte(',')
+		sb.WriteString(strconv.FormatInt(mw, 10))
+		sb.WriteByte(']')
 	}
 	if r.sched != nil {
 		// G-B: scheduler latency of every goroutine of the process during this window (ns)
@@ -825,4 +864,72 @@ func (r *Recorder) Stop() {
 	if r.outFile != nil {
 		r.outFile.Close()
 	}
+}
+
+// rtCounters reads three cumulative runtime/metrics values and reports their per-window deltas (Phase G):
+// GC CPU seconds (all GC work, background workers included), stop-the-world GC pause seconds (sum of the pause
+// histogram, bucket upper edges) and the total time goroutines spent blocked on sync.Mutex / RWMutex.
+type rtCounters struct {
+	s         []metrics.Sample
+	gc, mw    float64
+	pauseCnts []uint64
+	pauseSum  float64
+}
+
+func newRTCounters() *rtCounters {
+	c := &rtCounters{s: []metrics.Sample{{Name: "/cpu/classes/gc/total:cpu-seconds"}, {Name: "/sched/pauses/total/gc:seconds"}, {Name: "/sync/mutex/wait/total:seconds"}}}
+	metrics.Read(c.s)
+	ok := false
+	for _, v := range c.s {
+		if v.Value.Kind() != metrics.KindBad {
+			ok = true
+		}
+	}
+	if !ok {
+		return nil
+	}
+	c.gc, c.pauseSum, c.mw = c.read()
+	return c
+}
+
+// read returns the cumulative values (seconds); a missing metric reads as 0.
+func (c *rtCounters) read() (gc, pause, mw float64) {
+	metrics.Read(c.s)
+	if c.s[0].Value.Kind() == metrics.KindFloat64 {
+		gc = c.s[0].Value.Float64()
+	}
+	if c.s[1].Value.Kind() == metrics.KindFloat64Histogram {
+		h := c.s[1].Value.Float64Histogram()
+		for i, n := range h.Counts {
+			if n == 0 {
+				continue
+			}
+			edge := h.Buckets[i+1]
+			if math.IsInf(edge, 1) {
+				edge = h.Buckets[i]
+			}
+			pause += float64(n) * edge
+		}
+	}
+	if c.s[2].Value.Kind() == metrics.KindFloat64 {
+		mw = c.s[2].Value.Float64()
+	}
+	return
+}
+
+// delta returns the ns of GC CPU, STW pause and mutex wait since the previous call.
+func (c *rtCounters) delta() (gcNs, stwNs, mwNs int64) {
+	gc, pause, mw := c.read()
+	gcNs, stwNs, mwNs = int64((gc-c.gc)*1e9), int64((pause-c.pauseSum)*1e9), int64((mw-c.mw)*1e9)
+	c.gc, c.pauseSum, c.mw = gc, pause, mw
+	if gcNs < 0 {
+		gcNs = 0
+	}
+	if stwNs < 0 {
+		stwNs = 0
+	}
+	if mwNs < 0 {
+		mwNs = 0
+	}
+	return
 }

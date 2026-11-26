@@ -1,2 +1,6 @@
 .vs
 build
+# Phase I/J: measured data stays out of git (archive/ and /proj hold it)
+examples/bigsvc/results/
+__pycache__/
+*.pyc

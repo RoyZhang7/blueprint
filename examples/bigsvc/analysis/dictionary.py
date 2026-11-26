@@ -271,21 +271,28 @@ def settled_windows(R, settle_s, by="step", settle_mix=None):
     return [W[i] for i in keep], [step_of[i] for i in keep], [mix_of[i] for i in keep]
 
 
-def overloaded_steps(R, windows, step_of, tol=0.95):
-    """Steps whose served arrival rate fell below tol x the target: the service was past
-    its knee there, so its W is not a profiled maximum (F5)."""
+def served_ratio(R, windows, step_of):
+    """served/target per step, relative to the lowest step's: a downstream SUT sees only a fraction of the generator's
+    rate (its share of the call graph), so the lowest step's ratio is the reference."""
     rate = {s["step"]: s["rate"] for s in R["steps"]}
     served = {}
     for s in sorted(set(step_of)):
         ws = [w for w, st in zip(windows, step_of) if st == s]
-        if rate.get(s):
+        if rate.get(s) and ws:
             served[s] = sum(w["a"] for w in ws) / sum(window_len_s(w) for w in ws) / rate[s]
     if not served:
-        return set()
-    # a downstream SUT sees only a fraction of the generator's rate (its share of the call
-    # graph): compare each step's served/target ratio with the lowest step's
+        return {}
     ref = served[min(served)]
-    over = {s for s, v in served.items() if v < tol * ref}
+    return {s: v / ref for s, v in served.items()}
+
+
+def overloaded_steps(R, windows, step_of, tol=0.95):
+    """Steps whose served arrival rate fell below tol x the target: the service was past
+    its knee there, so its W is not a profiled maximum (F5)."""
+    served = served_ratio(R, windows, step_of)
+    if not served:
+        return set()
+    over = {s for s, v in served.items() if v < tol}
     # Phase D: with the admission gate the in-process queue is bounded (gRPC's per-connection stream limit), so an
     # overloaded step shows a flat ~40 ms wait in the server stream while the backlog sits in the socket; the load
     # generator's own latency sees it. A step whose caller-side median latency exceeds OVERLOAD_CALLER x the
@@ -719,24 +726,53 @@ class ServiceDict:
     only if W_max > WAIT_GUARD_NOISE x noise (otherwise the wait guard is off: a floor-only service)."""
 
     def __init__(self, k, mids, p50, Fbar_b, K_b, W, h, fl, c_ms, names, Fbar_sweep, K_sweep, cbar_sweep, wmax, noise, noise_steps,
-                 fbar, steps, overloaded, label, csrc, flq=None):
+                 fbar, steps, overloaded, label, csrc, flq=None, g=None, u=None, nwin=None, anchors=None, step_interp=False,
+                 min_bin_windows=None):
         self.flq = flq
+        self.anchors = anchors or []; self.step_interp = bool(step_interp); self.min_bin_windows = min_bin_windows
+        ok0 = np.isfinite(np.asarray(h))
+        self.g = np.asarray(g, float)[ok0] if g is not None else None       # B.1: g(rho) per rho bin, aligned with mids
+        self.u = np.asarray(u, float)[ok0] if u is not None else None
         ok = np.isfinite(h)
         half = float(mids[1] - mids[0]) / 2 if len(mids) > 1 else 0.0
         self.k = k; self.mids = np.asarray(mids)[ok]; self.h = np.asarray(h)[ok]; self.W = np.asarray(W)[ok]; self.p50 = np.asarray(p50)[ok]
         self.Fbar_b = np.asarray(Fbar_b)[ok]; self.K_b = np.asarray(K_b)[ok]
+        self.nwin = np.asarray(nwin)[ok] if nwin is not None else None     # settled windows in each kept bin
         self.rho_min = float(self.mids.min() - half); self.rho_max = float(self.mids.max() + half)
         self.fl = fl; self.c_ms = c_ms; self.names = names; self.Fbar_sweep = Fbar_sweep; self.K_sweep = K_sweep; self.cbar_sweep = cbar_sweep
         self.wmax = float(wmax); self.noise = float(noise); self.noise_steps = noise_steps; self.fbar = fbar; self.steps = steps
         self.overloaded = overloaded; self.label = label; self.csrc = csrc
         self.wait_guard = bool(self.wmax > WAIT_GUARD_NOISE * self.noise)
 
+    def between_steps(self, rho, key):
+        """step_interp: the value of `key` interpolated between the two adjacent steps when rho lies outside every kept
+        step's rho band and between two steps; None otherwise (inside a band, or below the first / above the last step)"""
+        if not self.step_interp or len(self.anchors) < 2: return None
+        A = self.anchors
+        if any(a["lo"] <= rho <= a["hi"] for a in A): return None
+        for a, b in zip(A, A[1:]):
+            if a["rho"] < rho < b["rho"] and np.isfinite(a[key]) and np.isfinite(b[key]):
+                return float(a[key] + (b[key] - a[key]) * (rho - a["rho"]) / (b["rho"] - a["rho"]))
+        return None
+
+    def g_at(self, rho):
+        """B.1: g(rho) = u_sweep(rho) / cbar_sweep, interpolated over the profiled bins (clamped at the ends); 1 if unknown."""
+        if np.ndim(rho) == 0:
+            v = self.between_steps(float(rho), "g")
+            if v is not None: return v
+        if self.g is None or not np.isfinite(self.g).any():
+            return np.ones_like(np.asarray(rho, float)) if np.ndim(rho) else 1.0
+        m = np.isfinite(self.g)
+        return np.interp(rho, self.mids[m], self.g[m])
+
     def h_at(self, rho):
-        return float(np.interp(rho, self.mids, self.h))
+        v = self.between_steps(rho, "h")
+        return v if v is not None else float(np.interp(rho, self.mids, self.h))
 
     def p50_at(self, rho):
         """the sweep's own pooled p50 at rho: the dictionary evaluated at the sweep mix"""
-        return float(np.interp(rho, self.mids, self.p50))
+        v = self.between_steps(rho, "p50")
+        return v if v is not None else float(np.interp(rho, self.mids, self.p50))
 
     def mix(self, shares):
         return mix_stats(shares, self.c_ms, self.fl, self.fbar, self.flq)
@@ -764,10 +800,13 @@ class ServiceDict:
 
     def save(self, path):
         json.dump(dict(form="D[rho; mix] = Fbar + h(rho) K", fbar=self.fbar, k=self.k, rho=self.mids.round(4).tolist(), h=self.h.round(5).tolist(),
+                       g=(np.round(self.g, 5).tolist() if self.g is not None else None), u_sweep_ms=(np.round(self.u, 5).tolist() if self.u is not None else None),
                        W_sweep_ms=self.W.round(4).tolist(), p50_sweep_ms=self.p50.round(4).tolist(), Fbar_sweep_ms=self.Fbar_sweep, K_sweep_ms=self.K_sweep,
                        cbar_sweep_ms=self.cbar_sweep, wmax_ms=self.wmax, floor_noise_ms=self.noise, noise_steps=self.noise_steps, wait_guard=self.wait_guard,
                        fl_ms=self.fl, c_ms=self.c_ms, overloaded_steps=self.overloaded, source=self.label, costs=self.csrc,
-                       floor_quantiles_ms=({e: np.round(q, 5).tolist() for e, q in self.flq.items()} if self.flq else None)),
+                       floor_quantiles_ms=({e: np.round(q, 5).tolist() for e, q in self.flq.items()} if self.flq else None),
+                       windows_per_bin=(self.nwin.tolist() if self.nwin is not None else None), min_bin_windows=self.min_bin_windows,
+                       step_interp=self.step_interp, step_anchors=[{k: (round(v, 5) if isinstance(v, float) else v) for k, v in a.items()} for a in self.anchors]),
                   open(path, "w"), indent=1)
 
 
@@ -785,12 +824,17 @@ def floor_noise_lowest_step(windows, step_of, step):
     return float(np.percentile(p, 75) - np.percentile(p, 25)) if len(p) >= 5 else 0.0
 
 
-def fit_service_dict(R, settle=5.0, costs_file=None, fbar="mixture", nbins=24, min_n=20, smooth_s=1.0, label=None):
+def fit_service_dict(R, settle=5.0, costs_file=None, fbar="mixture", nbins=24, min_n=20, smooth_s=1.0, label=None, wait_rule=True,
+                     min_bin_windows=None, step_interp=False):
     """Section 1.1: h(rho) = W_sweep(rho) / K(sweep mix) from one profiling sweep, with W_sweep = pooled p50 of all
     requests in the rho bin minus Fbar of the bin's arrival mix; FL_e = per-endpoint median at the lowest step; c_e
     from the costs file (or the run's configured cpu_ms). Overloaded steps (served < target, caller/server ratio
     growth, or pooled wait > OVERLOAD_WAIT x cbar) are dropped. Floor noise = the lowest kept step's second-to-second
-    spread of the pooled p50 (IQR), see floor_noise_lowest_step."""
+    spread of the pooled p50 (IQR), see floor_noise_lowest_step.
+    RESULTS-K 4.5.1 (both off by default, so earlier results reproduce): min_bin_windows keeps a rho bin only if it holds
+    at least that many settled windows (min_n counts requests, so a bin of a few burst windows between two steps passed);
+    step_interp makes h, p50 and g at a rho outside every kept step's rho band (p5-p95 of the step's windows) the linear
+    interpolation between the two adjacent steps' own values (h_s = (p50_s - Fbar_s) / K_s at the step's mean rho)."""
     names = R["run"]["endpoints"]; cfg = dict(zip(names, R["run"]["floors_ms"]))
     k = cpuset_size(R["meta"].get("cpuset", "0-7"))
     c_ms, csrc = costs_of_run(R, costs_file)
@@ -798,6 +842,7 @@ def fit_service_dict(R, settle=5.0, costs_file=None, fbar="mixture", nbins=24, m
     fl, _ = floors_lowest_step(W, step_of, names, cfg)
     flq = floor_quantiles_lowest_step(W, step_of, names, fl)  # FL_e(q): stored with the dictionary (Phase F: Fbar = mixture median)
     over = overloaded_steps(R, W, step_of)
+    sv = served_ratio(R, W, step_of)  # per-step served/target (relative to the lowest step), kept with the step stats
     steps = {}
     for s in sorted(set(step_of)):
         ws = [w for w, st in zip(W, step_of) if st == s]
@@ -808,17 +853,24 @@ def fit_service_dict(R, settle=5.0, costs_file=None, fbar="mixture", nbins=24, m
                 arr[e] += v[EP_A]
         m = mix_stats(arr, c_ms, fl, fbar, flq)
         rho = float(np.mean([rho_of_window(w, c_ms) for w in ws])) / k
-        steps[s] = dict(rho=rho, p50=float(np.median(samp)) if len(samp) else np.nan, n=len(samp), **m)
-        if len(samp) and steps[s]["p50"] - m["Fbar"] > OVERLOAD_WAIT * m["cbar"]:
-            over.add(s)
+        # B.1: u = process CPU per served request at this step (ms; the recorder's cpu field over the step's arrivals)
+        cpu_ns = sum(w.get("cpu", 0) for w in ws if "cpu" in w); a_tot = sum(w["a"] for w in ws if "cpu" in w)
+        u_ms = cpu_ns / 1e6 / a_tot if a_tot else float("nan")
+        steps[s] = dict(rho=rho, p50=float(np.median(samp)) if len(samp) else np.nan, n=len(samp), served=sv.get(s, float("nan")), u_ms=u_ms, **m)
+        if wait_rule and len(samp) and steps[s]["p50"] - m["Fbar"] > OVERLOAD_WAIT * m["cbar"]:
+            over.add(s)  # (wait_rule=False for a stressed sweep used as the truth: its served steps all count)
     keep = [i for i, s in enumerate(step_of) if s not in over]
-    Wk = [W[i] for i in keep]
+    Wk = [W[i] for i in keep]; stk = np.array([step_of[i] for i in keep])
     rho = rho_series(Wk, c_ms, smooth_s) / k
     edges = np.linspace(0, 1.05, nbins + 1); mids = (edges[:-1] + edges[1:]) / 2
     bins = np.clip(np.digitize(rho, edges) - 1, 0, nbins - 1)
+    nwin = np.bincount(bins, minlength=nbins)   # settled windows per rho bin
     pooled = [[] for _ in range(nbins)]; arrb = [defaultdict(float) for _ in range(nbins)]
+    cpub = np.zeros(nbins); ab = np.zeros(nbins)
     for i, w in enumerate(Wk):
         b = bins[i]
+        if "cpu" in w:
+            cpub[b] += w["cpu"]; ab[b] += w["a"]
         for e, v in w["ep"].items():
             x, _ = lat_samples(w, e)
             if len(x):
@@ -832,17 +884,30 @@ def fit_service_dict(R, settle=5.0, costs_file=None, fbar="mixture", nbins=24, m
     for b in range(nbins):
         if pooled[b] and mids[b] <= top:
             x = np.concatenate(pooled[b])
-            if len(x) >= min_n:
+            if len(x) >= min_n and (min_bin_windows is None or nwin[b] >= min_bin_windows):
                 m = mix_stats(arrb[b], c_ms, fl, fbar, flq)
                 p50[b] = np.median(x); Fb[b] = m["Fbar"]; Kb[b] = m["K"]
     Wb = p50 - Fb
     with np.errstate(invalid="ignore", divide="ignore"):
         h = Wb / Kb
+        ub = np.where(ab > 0, cpub / 1e6 / np.maximum(ab, 1), np.nan)   # ms of process CPU per request in the bin
     arr_all = defaultdict(float)
     for w in Wk:
         for e, v in w["ep"].items():
             arr_all[e] += v[EP_A]
     ms = mix_stats(arr_all, c_ms, fl, fbar, flq)
+    # B.1: g(rho) = u(rho) / cbar_sweep, per bin (NaN where the bin has no CPU) and per step
+    with np.errstate(invalid="ignore", divide="ignore"):
+        gb = ub / ms["cbar"] if ms["cbar"] else np.full(nbins, np.nan)
+        gb = np.where(np.isfinite(p50), gb, np.nan)
+    for s_, v in steps.items():
+        v["g"] = v["u_ms"] / ms["cbar"] if ms["cbar"] and np.isfinite(v["u_ms"]) else float("nan")
+    anchors = []   # one per kept step: its mean rho and rho band over its settled windows, and its own h, p50 and g
+    for s_, v in sorted(steps.items(), key=lambda kv: kv[1]["rho"]):
+        r_s = rho[stk == s_]
+        if s_ in over or not len(r_s) or not np.isfinite(v["p50"]) or not v.get("K"): continue
+        anchors.append(dict(step=int(s_), rho=float(np.mean(r_s)), lo=float(np.percentile(r_s, 5)), hi=float(np.percentile(r_s, 95)),
+                            h=float((v["p50"] - v["Fbar"]) / v["K"]), p50=float(v["p50"]), g=float(v["g"]), windows=int(len(r_s))))
     kept_steps = {s: v for s, v in steps.items() if s not in over and np.isfinite(v["p50"])}
     # floor noise (Phase F): the lowest kept step's own second-to-second spread of the pooled p50 (p95 - p5 over its
     # one-second windows). The Phase E rule (max - min of the per-step p50 over the steps at rho <= 0.5) counted a wait
@@ -850,4 +915,5 @@ def fit_service_dict(R, settle=5.0, costs_file=None, fbar="mixture", nbins=24, m
     low = [min(kept_steps)] if kept_steps else []
     noise = floor_noise_lowest_step(W, step_of, low[0]) if low else 0.0
     return ServiceDict(k, mids, p50, Fb, Kb, Wb, h, fl, c_ms, names, ms["Fbar"], ms["K"], ms["cbar"], np.nanmax(Wb) if np.isfinite(Wb).any() else 0.0,
-                       noise, sorted(low), fbar, steps, sorted(over), label or os.path.basename(R["dir"]), csrc, flq)
+                       noise, sorted(low), fbar, steps, sorted(over), label or os.path.basename(R["dir"]), csrc, flq, g=gb, u=ub,
+                       nwin=nwin, anchors=anchors, step_interp=step_interp, min_bin_windows=min_bin_windows)

@@ -30,11 +30,13 @@ REGISTRY=${BIGSVC_REGISTRY:-10.10.1.1:5000}
 RESULTS=${RESULTS:-/local/results}
 NODE=${NODE:-node-4}
 CPUSET=${CPUSET:-2-5}
+NAME=${NAME:-bigsvc}   # Phase J0'': the deployment / service name (bigsvc-tN tenants beside the victim)
 WLGEN_NODE=${WLGEN_NODE:-}
 WLGEN_CPUS=${WLGEN_CPUS:-6,7}
 TAG=${TAG:-latest}
 WINDOW_MS=${WINDOW_MS:-100}
 MEMWALK_MB=${MEMWALK_MB:-256}
+MEMWALK_STEPS=${MEMWALK_STEPS:-0}   # >0: VioMemWalk walks this many steps per request instead of sizing from the start-up calibration
 RAW=${RAW:-1}
 DISABLE=${DISABLE:-0}
 GATE=${GATE:-1}            # Phase D G-A: admission gate in the recorder (GORDION_GATE); 0 = off
@@ -62,25 +64,26 @@ wlgen_bin() { if [ -x $WIRING/wlgen-$TAG ]; then echo $WIRING/wlgen-$TAG; else e
 cmd_deploy() {
   local run=$1; shift
   ssh -o BatchMode=yes $NODE "sudo mkdir -p $HOSTDIR && sudo chmod 777 $HOSTDIR" >/dev/null
-  kubectl delete deployment bigsvc --ignore-not-found --wait=true >/dev/null
+  kubectl delete deployment $NAME --ignore-not-found --wait=true >/dev/null
   # the old pod keeps running through its grace period after the deployment is gone; an overloaded one (after a
   # stressed run) overlaps with the new pod's spin calibration and halves it (c-ramp3: 4.06 vs 2.01 ns/iter)
-  kubectl wait --for=delete pod -l app=bigsvc --timeout=90s >/dev/null 2>&1 || true
+  kubectl wait --for=delete pod -l app=$NAME --timeout=90s >/dev/null 2>&1 || true
   cat <<EOF | kubectl apply -f - >/dev/null
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: bigsvc
-  labels: {app: bigsvc}
+  name: $NAME
+  labels: {app: $NAME}
 spec:
   replicas: 1
-  selector: {matchLabels: {app: bigsvc}}
+  selector: {matchLabels: {app: $NAME}}
   template:
     metadata:
-      labels: {app: bigsvc}
+      labels: {app: $NAME}
       annotations: {bigsvc/run: "$run"}
     spec:
       nodeSelector: {kubernetes.io/hostname: $NODE}
+      tolerations: [{key: dedicated, operator: Exists, effect: NoSchedule}]   # clnode170: node-3/4 carry dedicated=special
       containers:
       - name: big-ctr
         image: $REGISTRY/big_ctr:$TAG
@@ -95,6 +98,8 @@ spec:
         - {name: GORDION_GATE_CAP, value: "$GATE_CAP"}
         - {name: BIGSVC_CPUSET, value: "$CPUSET"}
         - {name: BIGSVC_MEMWALK_MB, value: "$MEMWALK_MB"}
+        - {name: BIGSVC_MEMWALK_STEPS, value: "$MEMWALK_STEPS"}
+        - {name: GORDION_READS, value: "${READS:-}"}   # Phase I: "mhz" turns the recorder's clock read on (default off)
         - {name: BIGSVC_NS_PER_ITER, value: "${NS_PER_ITER:-}"}
         ports: [{containerPort: 12345}]
         volumeMounts: [{name: data, mountPath: /data}]
@@ -104,26 +109,26 @@ spec:
 ---
 apiVersion: v1
 kind: Service
-metadata: {name: bigsvc}
+metadata: {name: $NAME}
 spec:
-  selector: {app: bigsvc}
+  selector: {app: $NAME}
   ports: [{name: grpc, port: 12345, targetPort: 12345}]
 EOF
-  kubectl rollout status deployment/bigsvc --timeout=180s >/dev/null
-  local ip; ip=$(kubectl get svc bigsvc -o jsonpath='{.spec.clusterIP}')
+  kubectl rollout status deployment/$NAME --timeout=180s >/dev/null
+  local ip; ip=$(kubectl get svc $NAME -o jsonpath='{.spec.clusterIP}')
   log "waiting for $ip:12345"
   for i in $(seq 1 120); do
     if nc -z -w 1 $ip 12345 2>/dev/null; then break; fi
     sleep 1
   done
-  kubectl logs deployment/bigsvc | grep -E "calibrat|pinned" | head -3 >&2
+  kubectl logs deployment/$NAME | grep -E "calibrat|pinned" | head -3 >&2
   echo $ip
 }
 
 cmd_wlgen() {
   local run=$1; shift
   [ "${1:-}" = "--" ] && shift
-  local ip; ip=$(kubectl get svc bigsvc -o jsonpath='{.spec.clusterIP}')
+  local ip; ip=$(kubectl get svc $NAME -o jsonpath='{.spec.clusterIP}')
   mkdir -p $RESULTS/$run
   if [ -n "$WLGEN_NODE" ]; then
     log "wlgen on $WLGEN_NODE (cpus $WLGEN_CPUS) -> $ip:12345 : $*"
@@ -143,7 +148,7 @@ cmd_collect() {
   mkdir -p $RESULTS/$run
   sleep 1
   scp -q -o BatchMode=yes $NODE:$HOSTDIR/$run.jsonl $RESULTS/$run/gordion.jsonl
-  kubectl logs deployment/bigsvc > $RESULTS/$run/pod.log 2>/dev/null || true
+  kubectl logs deployment/$NAME > $RESULTS/$run/pod.log 2>/dev/null || true
   # F8: record the service node's cpufreq state (driver, governor, current kHz of the first service core)
   local c0=${CPUSET%%[-,]*}
   local cpufreq; cpufreq=$(ssh -o BatchMode=yes $NODE "cd /sys/devices/system/cpu/cpu$c0/cpufreq 2>/dev/null && echo \$(cat scaling_driver) \$(cat scaling_governor) \$(cat scaling_cur_freq)" 2>/dev/null || echo "none")
@@ -153,10 +158,10 @@ cmd_collect() {
   local hwp; hwp=$(ssh -o BatchMode=yes $NODE "sudo rdmsr -p $c0 0x774 2>/dev/null; echo -n ' perf_status_ratio='; echo \$(( (0x\$(sudo rdmsr -p $c0 0x198 2>/dev/null || echo 0) >> 8) & 0xff ))" 2>/dev/null | tr '
 ' ' ' || echo none)
   cat > $RESULTS/$run/meta.json <<EOF
-{"run":"$run","node":"$NODE","cpuset":"$CPUSET","tag":"$TAG","window_ms":$WINDOW_MS,"memwalk_mb":$MEMWALK_MB,"raw":"$RAW","wlgen_node":"${WLGEN_NODE:-node-0}","wlgen_cpus":"$WLGEN_CPUS",
+{"run":"$run","node":"$NODE","cpuset":"$CPUSET","tag":"$TAG","window_ms":$WINDOW_MS,"memwalk_mb":$MEMWALK_MB,"memwalk_steps":$MEMWALK_STEPS,"raw":"$RAW","wlgen_node":"${WLGEN_NODE:-node-0}","wlgen_cpus":"$WLGEN_CPUS",
  "stressor":"$STRESSOR","cpufreq":"$cpufreq","sched_idle_fillers":"${idle:-0}","hwp":"$hwp","nominal_mhz":"${NOMINAL_MHZ:-}",
  "gate":"$GATE","gate_cap":"$GATE_CAP","ns_per_iter":"${NS_PER_ITER:-}",
- "image":"$(kubectl get deployment bigsvc -o jsonpath='{.spec.template.spec.containers[0].image}')",
+ "image":"$(kubectl get deployment $NAME -o jsonpath='{.spec.template.spec.containers[0].image}')",
  "collected":"$(date -Is)"}
 EOF
   log "collected: $(wc -l < $RESULTS/$run/gordion.jsonl) recorder lines, $(wc -l < $RESULTS/$run/wlgen.jsonl) wlgen lines -> $RESULTS/$run"
@@ -172,7 +177,7 @@ cmd_run() {
   echo $run
 }
 
-cmd_down() { kubectl delete deployment bigsvc svc bigsvc --ignore-not-found; }
+cmd_down() { kubectl delete deployment $NAME svc $NAME --ignore-not-found; }
 
 sub=${1:-}; shift || true
 case "$sub" in

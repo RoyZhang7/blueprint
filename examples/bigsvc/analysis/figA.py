@@ -32,6 +32,10 @@ def load(run, costs=None, need_K=False):
     r["served"] = r["lambda"] / np.maximum(r["rate_target"], 1e-9)
     r["k"] = k
     r["u"] = r["rho"] / k
+    # executing slots: k - gate cap... i.e. k - 1 under the admission gate (Go services; GORDION_GATE_CAP overrides), k otherwise
+    gated = str(meta.get("gate", "0")) == "1" and meta.get("testbed", "") != "socialnetwork"
+    r["slots"] = int(meta.get("gate_cap") or 0) or (k - 1 if gated else k)
+    r["us"] = r["u"] * k / r["slots"]  # rho' = lambda cbar / (f/f_nom) / slots
     r["K"] = np.nan
     if need_K:
         from analyze import load_run
@@ -53,7 +57,8 @@ def main():
     ap.add_argument("--stream", default="server-side Lat_e (tap -> return minus downstream-blocked)", help="latency stream named in the title")
     ap.add_argument("--dict-form", default="D[rho; mix] = Fbar + h(rho) K, Fbar = mixture median of the floor distributions (service dictionary, mix-corrected)", help="dictionary form named in the title")
     ap.add_argument("--y", choices=("lat", "wk"), default="lat", help="lat: latency (above floor if the row says so); wk: above-floor W divided by the mix's K (p50 only)")
-    ap.add_argument("--knee", type=float, default=0.65, help="rho of the dashed knee line")
+    ap.add_argument("--knee", type=float, default=0.65, help="rho (or rho' with --x slot) of the dashed knee line")
+    ap.add_argument("--x", choices=("rho", "slot"), default="slot", help="right panel's x: rho, or rho' = utilisation of the executing slots (gated rows; rho on a top axis)")
     ap.add_argument("--served-min", type=float, default=0.95, help="drop steps whose served/target is below this (overloaded)")
     a = ap.parse_args()
     rows = []
@@ -68,8 +73,11 @@ def main():
         axl, axr = axes[ri]
         ymin, ymax = np.inf, -np.inf
         wk = a.y == "wk"
+        ratio = None  # slots / k of the row (rho = rho' x slots / k)
         for mi, (run, label) in enumerate(runs):
             r = load(run, costs, need_K=wk)
+            if ratio is None:
+                ratio = r["slots"] / r["k"]
             # past-the-knee steps are not profiled data: rho above --max-u, or served/target below --served-min (overload)
             keep = (r["u"] <= a.max_u) & (r["served"] >= a.served_min)
             if keep.sum() < 2:  # a run whose generator never reached its target (served/target low throughout): keep the rho rule only
@@ -85,7 +93,7 @@ def main():
                 y50 = np.maximum(y50, res); y90 = np.maximum(y90, res)
             c, m = COLORS[mi % len(COLORS)], MARKERS[mi % len(MARKERS)]
             lab = f"{label} (cbar {np.nanmean(r['avgS_ms']):.2f} ms" + (f", K {r['K']:.2f} ms)" if wk else ")")
-            for ax, x in ((axl, r["lambda"]), (axr, r["u"])):
+            for ax, x in ((axl, r["lambda"]), (axr, r["us"] if a.x == "slot" else r["u"])):
                 ax.plot(x[keep], y50[keep], "-", marker=m, ms=4, color=c, lw=1.4, label=lab if ax is axl else None)
                 if not wk:
                     ax.plot(x[keep], y90[keep], "--", marker=m, ms=3, color=c, lw=0.9, alpha=0.8)
@@ -98,11 +106,16 @@ def main():
             ax.grid(alpha=.3)
             if ymax / max(ymin, 1e-3) > 10:
                 ax.set_yscale("log")
-        axl.set_title(f"{title}, indexed by lambda", fontsize=10); axr.set_title(f"{title}, indexed by rho", fontsize=10)
-        axl.set_xlabel("lambda, arrival rate (req/s)"); axr.set_xlabel("rho = lambda cbar / (f/f_nom) / k, offered utilisation")
+        axl.set_title(f"{title}, indexed by lambda", fontsize=10); axr.set_title(f"{title}, indexed by {'rho' if a.x == 'slot' else 'rho'}" + ("'" if a.x == "slot" else ""), fontsize=10)
+        axl.set_xlabel("lambda, arrival rate (req/s)")
+        if a.x == "slot":
+            axr.set_xlabel(f"rho' = lambda cbar / (f/f_nom) / slots, utilisation of the executing slots   (rho = rho' x {ratio:.2f})")
+            top = axr.secondary_xaxis("top", functions=(lambda x: x * ratio, lambda x: x / ratio)); top.set_xlabel("rho = lambda cbar / (f/f_nom) / k (the dictionary's key)", fontsize=8); top.tick_params(labelsize=7)
+        else:
+            axr.set_xlabel("rho = lambda cbar / (f/f_nom) / k, offered utilisation")
         axl.set_ylabel(ylab, fontsize=8)
         axr.axvline(a.knee, color="0.5", ls="--", lw=0.8); axr.text(a.knee, axr.get_ylim()[1], " knee ->", fontsize=7, color="0.4", va="top")
-        axl.legend(fontsize=7)
+        axl.legend(fontsize=7, loc="lower right" if wk else "best")
     fig.suptitle(textwrap.fill(a.title, 140) + chr(10) + textwrap.fill("latency stream: " + a.stream + ";  dictionary: " + a.dict_form, 140), fontsize=10)
     fig.tight_layout(rect=(0, 0.04, 1, 0.96))
     fig.text(0.01, 0.005, "Notation: " + NOTATION + ";  k = cores of the service;  cbar = sum %_e c_e, c2bar = sum %_e c_e^2 of the mix", fontsize=6, color="0.3")

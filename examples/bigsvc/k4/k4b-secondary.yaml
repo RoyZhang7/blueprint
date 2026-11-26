@@ -1,0 +1,59 @@
+# Phase K4.1b Secondary: the K4.1 burner (k4-secondary.yaml) made BestEffort (no CPU request), so that it and the Primary
+# (BestEffort, as hr.sh deploys every HotelReservation service) have equal CPU weight, as HC's own framework runs Primary and
+# Secondary (plain docker run, default shares; TestFramework/bin/boilerplate.sh). Everything else as K4.1: namespace k4,
+# owns core 12 (k4node.sh sec-pin), five busy workers, NOAFF=1.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hc-secondary-burner
+  namespace: k4
+  labels: {app: hc-secondary-burner}
+spec:
+  replicas: 0
+  selector:
+    matchLabels: {app: hc-secondary-burner}
+  template:
+    metadata:
+      labels: {app: hc-secondary-burner}
+    spec:
+      nodeSelector:
+        kubernetes.io/hostname: node-4
+      tolerations:
+        - {key: dedicated, operator: Equal, value: special, effect: NoSchedule}
+      terminationGracePeriodSeconds: 2
+      containers:
+        - name: burner
+          image: python:3.11-slim
+          imagePullPolicy: IfNotPresent
+          env:
+            - {name: DUTY, value: "100"}
+            - {name: CPUS, value: "12"}
+            - {name: WORKERS, value: "5"}
+            - {name: NOAFF, value: "1"}
+          command: ["python3", "-u", "-c"]
+          args:
+            - |
+              import os, time, multiprocessing as mp
+              duty = float(os.environ.get("DUTY", "100"))
+              cpus = [int(c) for c in os.environ["CPUS"].split(",") if c]
+              workers = os.environ.get("WORKERS", "")
+              period = 0.02
+              def work(aff):
+                  if os.environ.get("NOAFF") != "1":
+                      os.sched_setaffinity(0, aff)
+                  if duty >= 100:
+                      while True:
+                          pass
+                  on = period * duty / 100.0
+                  while True:
+                      t = time.perf_counter()
+                      while time.perf_counter() - t < on:
+                          pass
+                      time.sleep(period - on)
+              affs = [{c} for c in cpus] if not workers else [set(cpus)] * int(workers)
+              ps = [mp.Process(target=work, args=(a,), daemon=True) for a in affs]
+              for p in ps:
+                  p.start()
+              print("load: duty", duty, "workers", len(ps), "cpus", cpus, "noaff", os.environ.get("NOAFF"), flush=True)
+              for p in ps:
+                  p.join()
